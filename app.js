@@ -346,8 +346,11 @@
         const anchorColor =
           point.timelineState === "overdue" ? "#d97706" : "#475569";
         const anchorWidth = point.timelineState === "overdue" ? 4 : 2;
+        const anchorMaskRadius = 13;
 
         return `
+          <circle cx="${point.x}" cy="${model.axisY}" fill="#ffffff"
+            r="${anchorMaskRadius}" />
           <g opacity="${labelOpacity}">
             <line stroke="${connectorColor}" stroke-width="${connectorWidth}"
               x1="${point.x}" x2="${point.x}" y1="${model.axisY}"
@@ -372,18 +375,11 @@
       <svg aria-label="Timeline visual" class="timeline-svg" role="img"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 ${model.width} ${model.height}">
-        <defs>
-          <linearGradient id="axisGradient" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stop-color="#0f766e" />
-            <stop offset="52%" stop-color="#64748b" />
-            <stop offset="100%" stop-color="#be123c" />
-          </linearGradient>
-        </defs>
         <rect fill="#ffffff" height="${model.height}" rx="8"
           width="${model.width}" />
         ${ticksMarkup}
-        <line stroke="url(#axisGradient)" stroke-linecap="round"
-          stroke-width="7" x1="${CHART_LEFT}" x2="${CHART_WIDTH - CHART_RIGHT}"
+        <line stroke="#000000" stroke-linecap="round"
+          stroke-width="3" x1="${CHART_LEFT}" x2="${CHART_WIDTH - CHART_RIGHT}"
           y1="${model.axisY}" y2="${model.axisY}" />
         ${markerMarkup}
         ${emptyMarkup}
