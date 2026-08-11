@@ -1,11 +1,20 @@
 (function () {
   const DAY_MS = 24 * 60 * 60 * 1000;
   const CHART_WIDTH = 1120;
-  const CHART_HEIGHT = 540;
   const CHART_LEFT = 88;
   const CHART_RIGHT = 92;
   const AXIS_Y = 268;
-  const LANE_ORDER = [-1, 1, -2, 2, -3, 3];
+  const LABEL_AXIS_GAP = 86;
+  const LABEL_BADGE_RADIUS = 21;
+  const LABEL_BOTTOM_EXTENT = 76;
+  const LABEL_GAP = 18;
+  const LABEL_MAX_WIDTH = 290;
+  const LABEL_MIN_WIDTH = 160;
+  const LABEL_ROW_HEIGHT = 104;
+  const LABEL_SIDE_PADDING = 32;
+  const LABEL_TOP_PADDING = 48;
+  const LABEL_TOP_EXTENT = 76;
+  const MIN_CHART_HEIGHT = 560;
   const STORAGE_KEY = "timeline-maker-state-v1";
 
   const elements = {
@@ -209,6 +218,23 @@
       : trimmed || "Untitled milestone";
   }
 
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function estimateTextWidth(value, averageCharacterWidth) {
+    return String(value || "").length * averageCharacterWidth;
+  }
+
+  function getLabelWidth(title, dateLabel) {
+    return clamp(
+      Math.max(estimateTextWidth(title, 10.8), estimateTextWidth(dateLabel, 8)) +
+        34,
+      LABEL_MIN_WIDTH,
+      LABEL_MAX_WIDTH,
+    );
+  }
+
   function formatDate(date, span) {
     const includeTime = span <= 4 * DAY_MS;
     const options = includeTime
@@ -253,22 +279,112 @@
     });
   }
 
-  function assignLane(x, lastXByLane, index) {
-    const minimumGap = 165;
-    const availableLane = LANE_ORDER.find(function (candidate) {
-      const lastX = lastXByLane.get(candidate);
-      return lastX === undefined || x - lastX >= minimumGap;
-    });
-    const lane = availableLane || LANE_ORDER[index % LANE_ORDER.length];
-
-    lastXByLane.set(lane, x);
-    return lane;
+  function createLabelTrack(side, row) {
+    return {
+      lastRight: Number.NEGATIVE_INFINITY,
+      row: row,
+      side: side,
+    };
   }
 
-  function laneToY(lane) {
-    const direction = lane > 0 ? 1 : -1;
-    const level = Math.abs(lane);
-    return AXIS_Y + direction * (78 + (level - 1) * 66);
+  function sortCandidateTracks(track, preferredSide) {
+    return (track.side === preferredSide ? 0 : 1) * 100 + track.row;
+  }
+
+  function chooseNewTrackSide(preferredSide, topRows, bottomRows) {
+    const preferredRows = preferredSide === "top" ? topRows : bottomRows;
+    const otherRows = preferredSide === "top" ? bottomRows : topRows;
+
+    if (preferredRows <= otherRows) {
+      return preferredSide;
+    }
+
+    return preferredSide === "top" ? "bottom" : "top";
+  }
+
+  function assignLabelTracks(points, span) {
+    const tracks = [];
+    let topRows = 0;
+    let bottomRows = 0;
+
+    const trackedPoints = points.map(function (point, index) {
+      const title = shortLabel(point.title, 26);
+      const dateLabel = formatDate(point.date, span);
+      const labelWidth = getLabelWidth(title, dateLabel);
+      const labelX = clamp(
+        point.x,
+        LABEL_SIDE_PADDING + labelWidth / 2,
+        CHART_WIDTH - LABEL_SIDE_PADDING - labelWidth / 2,
+      );
+      const labelLeft = labelX - labelWidth / 2;
+      const labelRight = labelX + labelWidth / 2;
+      const preferredSide = index % 2 === 0 ? "top" : "bottom";
+      let track = tracks
+        .slice()
+        .sort(function (a, b) {
+          return (
+            sortCandidateTracks(a, preferredSide) -
+            sortCandidateTracks(b, preferredSide)
+          );
+        })
+        .find(function (candidate) {
+          return labelLeft >= candidate.lastRight + LABEL_GAP;
+        });
+
+      if (!track) {
+        const side = chooseNewTrackSide(preferredSide, topRows, bottomRows);
+        const row = side === "top" ? topRows++ : bottomRows++;
+
+        track = createLabelTrack(side, row);
+        tracks.push(track);
+      }
+
+      track.lastRight = labelRight;
+
+      return Object.assign({}, point, {
+        dateLabel: dateLabel,
+        labelLeft: labelLeft,
+        labelRight: labelRight,
+        labelRow: track.row,
+        labelSide: track.side,
+        labelWidth: labelWidth,
+        labelX: labelX,
+        titleLabel: title,
+      });
+    });
+
+    return {
+      bottomRows: bottomRows,
+      points: trackedPoints,
+      topRows: topRows,
+    };
+  }
+
+  function getAxisY(topRows) {
+    const rowCount = Math.max(topRows, 1);
+
+    return Math.max(
+      AXIS_Y,
+      LABEL_TOP_PADDING +
+        LABEL_TOP_EXTENT +
+        LABEL_AXIS_GAP +
+        (rowCount - 1) * LABEL_ROW_HEIGHT,
+    );
+  }
+
+  function getChartHeight(axisY, bottomRows) {
+    if (bottomRows === 0) {
+      return Math.max(MIN_CHART_HEIGHT, axisY + LABEL_BOTTOM_EXTENT + 74);
+    }
+
+    return Math.max(
+      MIN_CHART_HEIGHT,
+      axisY +
+        LABEL_AXIS_GAP +
+        (bottomRows - 1) * LABEL_ROW_HEIGHT +
+        LABEL_BOTTOM_EXTENT +
+        74,
+    );
   }
 
   function buildTimelineModel(parsedMilestones, markerDate, showMarker) {
@@ -299,26 +415,37 @@
       maxTime += padding;
     }
 
-    const lastXByLane = new Map();
-    const points = parsedMilestones
+    const basicPoints = parsedMilestones
       .slice()
       .sort(function (a, b) {
         return a.timestamp - b.timestamp;
       })
-      .map(function (milestone, index) {
+      .map(function (milestone) {
         const x = getX(milestone.timestamp, minTime, maxTime);
-        const lane = assignLane(x, lastXByLane, index);
 
         return Object.assign({}, milestone, {
-          lane: lane,
           x: x,
-          y: laneToY(lane),
         });
       });
+    const span = maxTime - minTime;
+    const labelLayout = assignLabelTracks(basicPoints, span);
+    const axisY = getAxisY(labelLayout.topRows);
+    const height = getChartHeight(axisY, labelLayout.bottomRows);
+    const points = labelLayout.points.map(function (point) {
+      const rowOffset = point.labelRow * LABEL_ROW_HEIGHT;
+      const y =
+        point.labelSide === "top"
+          ? axisY - LABEL_AXIS_GAP - rowOffset
+          : axisY + LABEL_AXIS_GAP + rowOffset;
+
+      return Object.assign({}, point, {
+        y: y,
+      });
+    });
 
     return {
-      axisY: AXIS_Y,
-      height: CHART_HEIGHT,
+      axisY: axisY,
+      height: height,
       markerX:
         showMarker && markerTime !== null
           ? getX(markerTime, minTime, maxTime)
@@ -381,14 +508,16 @@
 
   function renderChart(model, showMarker) {
     const span = model.maxTime - model.minTime;
+    const gridBottom = model.height - 62;
+    const tickLabelY = model.height - 28;
     const ticksMarkup = model.ticks
       .map(function (tick) {
         return `
           <g>
             <line stroke="#e2e8f0" stroke-dasharray="4 8" stroke-width="1"
-              x1="${tick.x}" x2="${tick.x}" y1="52" y2="474" />
+              x1="${tick.x}" x2="${tick.x}" y1="52" y2="${gridBottom}" />
             <text fill="#64748b" font-size="16" text-anchor="middle"
-              x="${tick.x}" y="504">${escapeHtml(formatDate(tick.date, span))}</text>
+              x="${tick.x}" y="${tickLabelY}">${escapeHtml(formatDate(tick.date, span))}</text>
           </g>
         `;
       })
@@ -400,7 +529,7 @@
           <g>
             <line stroke="#dc2626" stroke-dasharray="8 7" stroke-linecap="round"
               stroke-width="4" x1="${model.markerX}" x2="${model.markerX}"
-              y1="44" y2="476" />
+              y1="44" y2="${gridBottom}" />
             <rect fill="#dc2626" height="30" rx="6" width="78"
               x="${model.markerX - 39}" y="22" />
             <text fill="#ffffff" font-size="15" font-weight="700"
@@ -422,12 +551,21 @@
     const pointMarkup = model.points
       .map(function (point) {
         const style = getMarkerStyle(point.timelineState);
-        const labelY = point.y + (point.lane > 0 ? 34 : -48);
-        const dateY = point.y + (point.lane > 0 ? 56 : -26);
-        const connectorEnd = point.lane > 0 ? point.y - 20 : point.y + 20;
+        const isTopLabel = point.labelSide === "top";
+        const connectorY = isTopLabel
+          ? point.y + LABEL_BADGE_RADIUS + 10
+          : point.y - LABEL_BADGE_RADIUS - 10;
+        const badgeEdgeY = isTopLabel
+          ? point.y + LABEL_BADGE_RADIUS + 1
+          : point.y - LABEL_BADGE_RADIUS - 1;
+        const labelRectY = isTopLabel
+          ? point.y - LABEL_TOP_EXTENT
+          : point.y + 28;
+        const titleY = labelRectY + 20;
+        const dateY = labelRectY + 42;
         const labelOpacity = point.timelineState === "completed" ? 0.56 : 1;
-        const title = escapeHtml(shortLabel(point.title));
-        const dateLabel = escapeHtml(formatDate(point.date, span));
+        const title = escapeHtml(point.titleLabel);
+        const dateLabel = escapeHtml(point.dateLabel);
         const connectorColor =
           point.timelineState === "overdue" ? "#d97706" : "#94a3b8";
         const connectorWidth = point.timelineState === "overdue" ? 3 : 2;
@@ -440,20 +578,24 @@
           <circle cx="${point.x}" cy="${model.axisY}" fill="#ffffff"
             r="${anchorMaskRadius}" />
           <g opacity="${labelOpacity}">
-            <line stroke="${connectorColor}" stroke-width="${connectorWidth}"
-              x1="${point.x}" x2="${point.x}" y1="${model.axisY}"
-              y2="${connectorEnd}" />
+            <path d="M ${point.x} ${model.axisY} V ${connectorY} H ${point.labelX} V ${badgeEdgeY}"
+              fill="none" stroke="${connectorColor}" stroke-linecap="round"
+              stroke-linejoin="round" stroke-width="${connectorWidth}" />
             <circle cx="${point.x}" cy="${model.axisY}" fill="#ffffff" r="9"
               stroke="${anchorColor}" stroke-width="${anchorWidth}" />
-            <g transform="translate(${point.x} ${point.y})">
+            <g transform="translate(${point.labelX} ${point.y})">
               <circle fill="${style.fill}" opacity="${style.opacity}" r="21"
                 stroke="${style.stroke}" stroke-width="${style.strokeWidth}" />
               ${statusIcon(point.timelineState)}
             </g>
+            <rect fill="#ffffff" height="48" rx="7"
+              stroke="#e2e8f0" stroke-width="1"
+              width="${point.labelWidth}" x="${point.labelLeft}"
+              y="${labelRectY}" />
             <text fill="#0f172a" font-size="18" font-weight="800"
-              text-anchor="middle" x="${point.x}" y="${labelY}">${title}</text>
+              text-anchor="middle" x="${point.labelX}" y="${titleY}">${title}</text>
             <text fill="#64748b" font-size="15" font-weight="600"
-              text-anchor="middle" x="${point.x}" y="${dateY}">${dateLabel}</text>
+              text-anchor="middle" x="${point.labelX}" y="${dateY}">${dateLabel}</text>
           </g>
         `;
       })
