@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Timeline Maker</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Milestone planner</p>
+          <h1>Timeline Maker</h1>
+        </div>
+
+        <dl class="metrics" aria-label="Timeline status summary">
+          <div class="metric-box">
+            <dt>Total</dt>
+            <dd id="totalCount">0</dd>
+          </div>
+          <div class="metric-box metric-completed">
+            <dt>Complete</dt>
+            <dd id="completedCount">0</dd>
+          </div>
+          <div class="metric-box metric-overdue">
+            <dt>Overdue</dt>
+            <dd id="overdueCount">0</dd>
+          </div>
+          <div class="metric-box metric-upcoming">
+            <dt>Upcoming</dt>
+            <dd id="upcomingCount">0</dd>
+          </div>
+        </dl>
+      </header>
+
+      <section class="control-panel" aria-label="Timeline controls">
+        <div class="control-field">
+          <label for="asOfInput">Current date</label>
+          <div class="control-row">
+            <input id="asOfInput" type="datetime-local" />
+            <button id="nowButton" type="button">Now</button>
+          </div>
+        </div>
+
+        <label class="toggle-row">
+          <input id="showTodayInput" type="checkbox" checked />
+          <span>Show current-date line</span>
+        </label>
+
+        <div class="control-actions">
+          <button id="addButton" type="button">+ Add milestone</button>
+          <button id="sortButton" type="button">Sort by date</button>
+          <button id="resetButton" type="button">Reset sample</button>
+          <button id="downloadButton" type="button">Download SVG</button>
+        </div>
+      </section>
+
+      <section class="timeline-panel" aria-label="Timeline visual">
+        <div id="timelineMount"></div>
+      </section>
+
+      <section class="editor-panel" aria-label="Milestones">
+        <div class="editor-grid editor-head">
+          <span>Milestone</span>
+          <span>Date / time</span>
+          <span>Status</span>
+          <span>Signal</span>
+          <span aria-hidden="true"></span>
+        </div>
+        <div id="milestoneRows" class="editor-body"></div>
+      </section>
+    </main>
+  </body>
+</html>
