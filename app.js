@@ -21,7 +21,9 @@
     addButton: document.querySelector("#addButton"),
     asOfInput: document.querySelector("#asOfInput"),
     completedCount: document.querySelector("#completedCount"),
+    dateColumnLabel: document.querySelector("#dateColumnLabel"),
     downloadButton: document.querySelector("#downloadButton"),
+    includeTimesInput: document.querySelector("#includeTimesInput"),
     milestoneRows: document.querySelector("#milestoneRows"),
     nowButton: document.querySelector("#nowButton"),
     overdueCount: document.querySelector("#overdueCount"),
@@ -47,13 +49,58 @@
     )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
-  function parseDateTime(value) {
+  function toDateInput(date) {
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+      date.getDate(),
+    )}`;
+  }
+
+  function parseDateValue(value, includeTimes) {
     if (!value) {
       return null;
     }
 
+    const match = String(value)
+      .trim()
+      .match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]) - 1;
+      const day = Number(match[3]);
+      const hour = includeTimes && match[4] ? Number(match[4]) : 0;
+      const minute = includeTimes && match[5] ? Number(match[5]) : 0;
+      const date = new Date(year, month, day, hour, minute);
+
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function toDateInputValue(value) {
+    const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+
+    if (match) {
+      return match[1];
+    }
+
+    const date = parseDateValue(value, false);
+    return date ? toDateInput(date) : "";
+  }
+
+  function toDateTimeInputValue(value) {
+    const date = parseDateValue(value, true);
+    return date ? toDateTimeInput(date) : "";
+  }
+
+  function toDateValueForMode(date, includeTimes) {
+    return includeTimes ? toDateTimeInput(date) : toDateInput(date);
+  }
+
+  function toInputValue(value, includeTimes) {
+    return includeTimes ? toDateTimeInputValue(value) : toDateInputValue(value);
   }
 
   function dateWithOffset(anchor, days, hours) {
@@ -63,36 +110,36 @@
     return date;
   }
 
-  function createExampleMilestones(anchor) {
+  function createExampleMilestones(anchor, includeTimes) {
     return [
       {
         id: "brief-approved",
         title: "Brief approved",
-        at: toDateTimeInput(dateWithOffset(anchor, -18, -3)),
+        at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
         status: "completed",
       },
       {
         id: "data-freeze",
         title: "Data freeze",
-        at: toDateTimeInput(dateWithOffset(anchor, -9, 2)),
+        at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
         status: "completed",
       },
       {
         id: "design-review",
         title: "Design review",
-        at: toDateTimeInput(dateWithOffset(anchor, -2, -1)),
+        at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
         status: "pending",
       },
       {
         id: "beta-launch",
         title: "Beta launch",
-        at: toDateTimeInput(dateWithOffset(anchor, 6, 1)),
+        at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
         status: "pending",
       },
       {
         id: "public-release",
         title: "Public release",
-        at: toDateTimeInput(dateWithOffset(anchor, 20, -2)),
+        at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
         status: "pending",
       },
     ];
@@ -133,8 +180,9 @@
   function loadSavedState() {
     const now = new Date();
     const fallback = {
-      asOf: toDateTimeInput(now),
-      milestones: createExampleMilestones(now),
+      asOf: toDateInput(now),
+      includeTimes: false,
+      milestones: createExampleMilestones(now, false),
       showToday: true,
     };
     const storage = getStorage();
@@ -160,6 +208,10 @@
 
       return {
         asOf: typeof saved.asOf === "string" ? saved.asOf : fallback.asOf,
+        includeTimes:
+          typeof saved.includeTimes === "boolean"
+            ? saved.includeTimes
+            : fallback.includeTimes,
         milestones: savedMilestones,
         showToday:
           typeof saved.showToday === "boolean"
@@ -183,6 +235,7 @@
         STORAGE_KEY,
         JSON.stringify({
           asOf: state.asOf,
+          includeTimes: state.includeTimes,
           milestones: state.milestones,
           showToday: state.showToday,
         }),
@@ -235,8 +288,7 @@
     );
   }
 
-  function formatDate(date, span) {
-    const includeTime = span <= 4 * DAY_MS;
+  function formatDate(date, includeTime) {
     const options = includeTime
       ? {
           month: "short",
@@ -247,6 +299,14 @@
       : { month: "short", day: "numeric" };
 
     return new Intl.DateTimeFormat(undefined, options).format(date);
+  }
+
+  function formatTickDate(date, span, includeTimes) {
+    return formatDate(date, includeTimes && span <= 4 * DAY_MS);
+  }
+
+  function formatMilestoneDate(date, includeTimes) {
+    return formatDate(date, includeTimes);
   }
 
   function getMilestoneState(status, timestamp, asOfDate) {
@@ -302,14 +362,14 @@
     return preferredSide === "top" ? "bottom" : "top";
   }
 
-  function assignLabelTracks(points, span) {
+  function assignLabelTracks(points, span, includeTimes) {
     const tracks = [];
     let topRows = 0;
     let bottomRows = 0;
 
     const trackedPoints = points.map(function (point, index) {
       const title = shortLabel(point.title, 26);
-      const dateLabel = formatDate(point.date, span);
+      const dateLabel = formatMilestoneDate(point.date, includeTimes);
       const labelWidth = getLabelWidth(title, dateLabel);
       const labelX = clamp(
         point.x,
@@ -387,7 +447,12 @@
     );
   }
 
-  function buildTimelineModel(parsedMilestones, markerDate, showMarker) {
+  function buildTimelineModel(
+    parsedMilestones,
+    markerDate,
+    showMarker,
+    includeTimes,
+  ) {
     const markerTime = markerDate ? markerDate.getTime() : null;
     const timestamps = parsedMilestones.map(function (milestone) {
       return milestone.timestamp;
@@ -428,7 +493,7 @@
         });
       });
     const span = maxTime - minTime;
-    const labelLayout = assignLabelTracks(basicPoints, span);
+    const labelLayout = assignLabelTracks(basicPoints, span, includeTimes);
     const axisY = getAxisY(labelLayout.topRows);
     const height = getChartHeight(axisY, labelLayout.bottomRows);
     const points = labelLayout.points.map(function (point) {
@@ -452,6 +517,7 @@
           : null,
       minTime: minTime,
       maxTime: maxTime,
+      includeTimes: includeTimes,
       points: points,
       ticks: buildTicks(minTime, maxTime),
       width: CHART_WIDTH,
@@ -517,7 +583,9 @@
             <line stroke="#e2e8f0" stroke-dasharray="4 8" stroke-width="1"
               x1="${tick.x}" x2="${tick.x}" y1="52" y2="${gridBottom}" />
             <text fill="#64748b" font-size="16" text-anchor="middle"
-              x="${tick.x}" y="${tickLabelY}">${escapeHtml(formatDate(tick.date, span))}</text>
+              x="${tick.x}" y="${tickLabelY}">${escapeHtml(
+                formatTickDate(tick.date, span, model.includeTimes),
+              )}</text>
           </g>
         `;
       })
@@ -668,7 +736,7 @@
 
   function getParsedMilestones(asOfDate) {
     return state.milestones.flatMap(function (milestone) {
-      const date = parseDateTime(milestone.at);
+      const date = parseDateValue(milestone.at, state.includeTimes);
 
       if (!date) {
         return [];
@@ -705,19 +773,24 @@
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
-        const date = parseDateTime(milestone.at);
+        const date = parseDateValue(milestone.at, state.includeTimes);
         const timelineState = date
           ? getMilestoneState(milestone.status, date.getTime(), asOfDate)
           : "upcoming";
+        const dateInputLabel = state.includeTimes
+          ? "Milestone date and time"
+          : "Milestone date";
+        const dateInputType = state.includeTimes ? "datetime-local" : "date";
+        const dateInputValue = toInputValue(milestone.at, state.includeTimes);
 
         return `
           <div class="editor-grid editor-row editor-row-${timelineState}">
             <input aria-label="Milestone title" data-field="title"
               data-id="${escapeHtml(milestone.id)}"
               value="${escapeHtml(milestone.title)}" />
-            <input aria-label="Milestone date and time" data-field="at"
-              data-id="${escapeHtml(milestone.id)}" type="datetime-local"
-              value="${escapeHtml(milestone.at)}" />
+            <input aria-label="${dateInputLabel}" data-field="at"
+              data-id="${escapeHtml(milestone.id)}" type="${dateInputType}"
+              value="${escapeHtml(dateInputValue)}" />
             <select aria-label="Milestone status" data-field="status"
               data-id="${escapeHtml(milestone.id)}">
               <option value="pending" ${
@@ -741,7 +814,7 @@
   }
 
   function renderTimelineAndCounts() {
-    const asOfDate = parseDateTime(state.asOf);
+    const asOfDate = parseDateValue(state.asOf, state.includeTimes);
     const parsedMilestones = getParsedMilestones(asOfDate);
     const counts = parsedMilestones.reduce(
       function (accumulator, milestone) {
@@ -752,7 +825,12 @@
       { completed: 0, overdue: 0, upcoming: 0, total: 0 },
     );
 
-    elements.asOfInput.value = state.asOf;
+    elements.asOfInput.type = state.includeTimes ? "datetime-local" : "date";
+    elements.asOfInput.value = toInputValue(state.asOf, state.includeTimes);
+    elements.dateColumnLabel.textContent = state.includeTimes
+      ? "Date / time"
+      : "Date";
+    elements.includeTimesInput.checked = state.includeTimes;
     elements.showTodayInput.checked = state.showToday;
     elements.totalCount.textContent = String(counts.total);
     elements.completedCount.textContent = String(counts.completed);
@@ -763,6 +841,7 @@
       parsedMilestones,
       asOfDate,
       state.showToday,
+      state.includeTimes,
     );
     currentSvgMarkup = renderChart(model, state.showToday);
     elements.timelineMount.innerHTML = currentSvgMarkup;
@@ -795,7 +874,7 @@
   }
 
   function addMilestone() {
-    const asOfDate = parseDateTime(state.asOf);
+    const asOfDate = parseDateValue(state.asOf, state.includeTimes);
     const parsedMilestones = getParsedMilestones(asOfDate);
     const sortedDates = parsedMilestones
       .map(function (milestone) {
@@ -812,7 +891,7 @@
     state.milestones.push({
       id: makeId(),
       title: "New milestone",
-      at: toDateTimeInput(nextDate),
+      at: toDateValueForMode(nextDate, state.includeTimes),
       status: "pending",
     });
     saveAndRender();
@@ -820,20 +899,18 @@
 
   function sortMilestones() {
     state.milestones.sort(function (a, b) {
-      const aTime = parseDateTime(a.at)
-        ? parseDateTime(a.at).getTime()
-        : Number.MAX_SAFE_INTEGER;
-      const bTime = parseDateTime(b.at)
-        ? parseDateTime(b.at).getTime()
-        : Number.MAX_SAFE_INTEGER;
+      const aDate = parseDateValue(a.at, state.includeTimes);
+      const bDate = parseDateValue(b.at, state.includeTimes);
+      const aTime = aDate ? aDate.getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = bDate ? bDate.getTime() : Number.MAX_SAFE_INTEGER;
       return aTime - bTime;
     });
     saveAndRender();
   }
 
   function resetSample() {
-    const asOfDate = parseDateTime(state.asOf) || new Date();
-    state.milestones = createExampleMilestones(asOfDate);
+    const asOfDate = parseDateValue(state.asOf, state.includeTimes) || new Date();
+    state.milestones = createExampleMilestones(asOfDate, state.includeTimes);
     saveAndRender();
   }
 
@@ -862,8 +939,13 @@
     saveAndRender();
   });
 
+  elements.includeTimesInput.addEventListener("change", function (event) {
+    state.includeTimes = event.target.checked;
+    saveAndRender();
+  });
+
   elements.nowButton.addEventListener("click", function () {
-    state.asOf = toDateTimeInput(new Date());
+    state.asOf = toDateValueForMode(new Date(), state.includeTimes);
     saveAndRender();
   });
 

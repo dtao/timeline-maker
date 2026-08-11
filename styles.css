@@ -201,6 +201,12 @@ h1 {
   font-weight: 800;
 }
 
+.toggle-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .toggle-row input {
   min-height: 18px;
   width: 18px;

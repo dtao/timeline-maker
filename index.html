@@ -39,15 +39,21 @@
         <div class="control-field">
           <label for="asOfInput">Current date</label>
           <div class="control-row">
-            <input id="asOfInput" type="datetime-local" />
+            <input id="asOfInput" type="date" />
             <button id="nowButton" type="button">Now</button>
           </div>
         </div>
 
-        <label class="toggle-row">
-          <input id="showTodayInput" type="checkbox" checked />
-          <span>Show current-date line</span>
-        </label>
+        <div class="toggle-stack">
+          <label class="toggle-row">
+            <input id="showTodayInput" type="checkbox" checked />
+            <span>Show current-date line</span>
+          </label>
+          <label class="toggle-row">
+            <input id="includeTimesInput" type="checkbox" />
+            <span>Specify times</span>
+          </label>
+        </div>
 
         <div class="control-actions">
           <button id="addButton" type="button">+ Add milestone</button>
@@ -64,7 +70,7 @@
       <section class="editor-panel" aria-label="Milestones">
         <div class="editor-grid editor-head">
           <span>Milestone</span>
-          <span>Date / time</span>
+          <span id="dateColumnLabel">Date</span>
           <span>Status</span>
           <span>Signal</span>
           <span aria-hidden="true"></span>
