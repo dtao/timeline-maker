@@ -6,6 +6,7 @@ entries, with optional time support.
 ## Features
 
 - Editable milestone title, date, and status fields
+- Multiple saved timelines with select, create, duplicate, delete, and rename
 - Date-only inputs by default, with an optional "Specify times" mode
 - Optional red current-date marker
 - Completed milestones shown with reduced opacity and a green check signal

@@ -22,17 +22,25 @@
     asOfInput: document.querySelector("#asOfInput"),
     completedCount: document.querySelector("#completedCount"),
     dateColumnLabel: document.querySelector("#dateColumnLabel"),
+    deleteTimelineButton: document.querySelector("#deleteTimelineButton"),
     downloadButton: document.querySelector("#downloadButton"),
+    duplicateTimelineButton: document.querySelector("#duplicateTimelineButton"),
     includeTimesInput: document.querySelector("#includeTimesInput"),
     milestoneRows: document.querySelector("#milestoneRows"),
+    newTimelineButton: document.querySelector("#newTimelineButton"),
     nowButton: document.querySelector("#nowButton"),
     overdueCount: document.querySelector("#overdueCount"),
     resetButton: document.querySelector("#resetButton"),
     showTodayInput: document.querySelector("#showTodayInput"),
     sortButton: document.querySelector("#sortButton"),
+    timelineCountLabel: document.querySelector("#timelineCountLabel"),
+    timelineList: document.querySelector("#timelineList"),
+    timelineNameInput: document.querySelector("#timelineNameInput"),
     timelineMount: document.querySelector("#timelineMount"),
+    toggleSidebarButton: document.querySelector("#toggleSidebarButton"),
     totalCount: document.querySelector("#totalCount"),
     upcomingCount: document.querySelector("#upcomingCount"),
+    workspaceShell: document.querySelector("#workspaceShell"),
   };
 
   const state = loadSavedState();
@@ -177,14 +185,90 @@
     };
   }
 
-  function loadSavedState() {
+  function cloneMilestones(milestones) {
+    return milestones.map(function (milestone) {
+      return Object.assign({}, milestone);
+    });
+  }
+
+  function createDefaultTimeline(name, withSample) {
     const now = new Date();
-    const fallback = {
+
+    return {
+      id: makeId(),
+      name: name || "Untitled timeline",
       asOf: toDateInput(now),
       includeTimes: false,
-      milestones: createExampleMilestones(now, false),
+      milestones:
+        withSample === false ? [] : createExampleMilestones(now, false),
       showToday: true,
     };
+  }
+
+  function normalizeTimeline(candidate, index) {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+
+    const now = new Date();
+    const includeTimes =
+      typeof candidate.includeTimes === "boolean"
+        ? candidate.includeTimes
+        : false;
+    const fallbackMilestones = createExampleMilestones(now, includeTimes);
+    const milestones = Array.isArray(candidate.milestones)
+      ? candidate.milestones
+          .map(function (milestone, milestoneIndex) {
+            return normalizeMilestone(milestone, milestoneIndex);
+          })
+          .filter(Boolean)
+      : fallbackMilestones;
+
+    return {
+      id:
+        typeof candidate.id === "string" && candidate.id.trim()
+          ? candidate.id
+          : `timeline-${index}-${makeId()}`,
+      name:
+        typeof candidate.name === "string" && candidate.name.trim()
+          ? candidate.name.trim()
+          : `Timeline ${index + 1}`,
+      asOf:
+        typeof candidate.asOf === "string"
+          ? candidate.asOf
+          : toDateValueForMode(now, includeTimes),
+      includeTimes: includeTimes,
+      milestones: milestones,
+      showToday:
+        typeof candidate.showToday === "boolean" ? candidate.showToday : true,
+    };
+  }
+
+  function stateFromTimelines(timelines, activeTimelineId, sidebarCollapsed) {
+    const activeTimeline =
+      timelines.find(function (timeline) {
+        return timeline.id === activeTimelineId;
+      }) || timelines[0];
+
+    return {
+      activeTimelineId: activeTimeline.id,
+      asOf: activeTimeline.asOf,
+      includeTimes: activeTimeline.includeTimes,
+      milestones: cloneMilestones(activeTimeline.milestones),
+      name: activeTimeline.name,
+      showToday: activeTimeline.showToday,
+      sidebarCollapsed: Boolean(sidebarCollapsed),
+      timelines: timelines,
+    };
+  }
+
+  function loadSavedState() {
+    const fallbackTimeline = createDefaultTimeline("Timeline 1");
+    const fallback = stateFromTimelines(
+      [fallbackTimeline],
+      fallbackTimeline.id,
+      false,
+    );
     const storage = getStorage();
 
     if (!storage) {
@@ -198,29 +282,66 @@
         return fallback;
       }
 
-      const savedMilestones = Array.isArray(saved.milestones)
-        ? saved.milestones
-            .map(function (milestone, index) {
-              return normalizeMilestone(milestone, index);
-            })
-            .filter(Boolean)
-        : fallback.milestones;
+      if (Array.isArray(saved.timelines)) {
+        const timelines = saved.timelines
+          .map(function (timeline, index) {
+            return normalizeTimeline(timeline, index);
+          })
+          .filter(Boolean);
 
-      return {
-        asOf: typeof saved.asOf === "string" ? saved.asOf : fallback.asOf,
-        includeTimes:
-          typeof saved.includeTimes === "boolean"
-            ? saved.includeTimes
-            : fallback.includeTimes,
-        milestones: savedMilestones,
-        showToday:
-          typeof saved.showToday === "boolean"
-            ? saved.showToday
-            : fallback.showToday,
-      };
+        if (timelines.length > 0) {
+          return stateFromTimelines(
+            timelines,
+            saved.activeTimelineId,
+            saved.sidebarCollapsed,
+          );
+        }
+      }
+
+      const legacyTimeline = normalizeTimeline(
+        Object.assign({ id: fallbackTimeline.id, name: "Timeline 1" }, saved),
+        0,
+      );
+
+      return stateFromTimelines(
+        [legacyTimeline || fallbackTimeline],
+        legacyTimeline ? legacyTimeline.id : fallbackTimeline.id,
+        false,
+      );
     } catch (_error) {
       return fallback;
     }
+  }
+
+  function syncActiveTimelineFromState() {
+    state.timelines = state.timelines.map(function (timeline) {
+      if (timeline.id !== state.activeTimelineId) {
+        return timeline;
+      }
+
+      return {
+        id: timeline.id,
+        name: state.name,
+        asOf: state.asOf,
+        includeTimes: state.includeTimes,
+        milestones: cloneMilestones(state.milestones),
+        showToday: state.showToday,
+      };
+    });
+  }
+
+  function loadTimelineIntoActiveState(timelineId) {
+    const timeline =
+      state.timelines.find(function (candidate) {
+        return candidate.id === timelineId;
+      }) || state.timelines[0];
+
+    state.activeTimelineId = timeline.id;
+    state.name = timeline.name;
+    state.asOf = timeline.asOf;
+    state.includeTimes = timeline.includeTimes;
+    state.milestones = cloneMilestones(timeline.milestones);
+    state.showToday = timeline.showToday;
   }
 
   function saveState() {
@@ -230,14 +351,16 @@
       return;
     }
 
+    syncActiveTimelineFromState();
+
     try {
       storage.setItem(
         STORAGE_KEY,
         JSON.stringify({
-          asOf: state.asOf,
-          includeTimes: state.includeTimes,
-          milestones: state.milestones,
-          showToday: state.showToday,
+          activeTimelineId: state.activeTimelineId,
+          sidebarCollapsed: state.sidebarCollapsed,
+          timelines: state.timelines,
+          version: 2,
         }),
       );
     } catch (_error) {
@@ -770,6 +893,37 @@
     return "Upcoming";
   }
 
+  function renderTimelineList() {
+    elements.workspaceShell.classList.toggle(
+      "sidebar-collapsed",
+      state.sidebarCollapsed,
+    );
+    elements.toggleSidebarButton.textContent = state.sidebarCollapsed ? ">" : "<";
+    elements.toggleSidebarButton.setAttribute(
+      "aria-label",
+      state.sidebarCollapsed ? "Expand timeline list" : "Collapse timeline list",
+    );
+    elements.timelineCountLabel.textContent = `${state.timelines.length}`;
+    elements.deleteTimelineButton.disabled = state.timelines.length <= 1;
+    elements.timelineList.innerHTML = state.timelines
+      .map(function (timeline) {
+        const isActive = timeline.id === state.activeTimelineId;
+
+        return `
+          <button
+            class="timeline-list-button${isActive ? " active" : ""}"
+            data-timeline-id="${escapeHtml(timeline.id)}"
+            type="button"
+          >
+            <span class="timeline-list-name">${escapeHtml(
+              timeline.name || "Untitled timeline",
+            )}</span>
+          </button>
+        `;
+      })
+      .join("");
+  }
+
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
@@ -827,6 +981,7 @@
 
     elements.asOfInput.type = state.includeTimes ? "datetime-local" : "date";
     elements.asOfInput.value = toInputValue(state.asOf, state.includeTimes);
+    elements.timelineNameInput.value = state.name;
     elements.dateColumnLabel.textContent = state.includeTimes
       ? "Date / time"
       : "Date";
@@ -850,6 +1005,7 @@
   }
 
   function render() {
+    renderTimelineList();
     const asOfDate = renderTimelineAndCounts();
     renderRows(asOfDate);
   }
@@ -914,6 +1070,76 @@
     saveAndRender();
   }
 
+  function selectTimeline(timelineId) {
+    if (timelineId === state.activeTimelineId) {
+      return;
+    }
+
+    syncActiveTimelineFromState();
+    loadTimelineIntoActiveState(timelineId);
+    saveAndRender();
+  }
+
+  function createTimeline() {
+    syncActiveTimelineFromState();
+
+    const timeline = createDefaultTimeline(
+      `Timeline ${state.timelines.length + 1}`,
+      false,
+    );
+
+    state.timelines.push(timeline);
+    loadTimelineIntoActiveState(timeline.id);
+    saveAndRender();
+  }
+
+  function duplicateTimeline() {
+    syncActiveTimelineFromState();
+
+    const activeTimeline =
+      state.timelines.find(function (timeline) {
+        return timeline.id === state.activeTimelineId;
+      }) || state.timelines[0];
+    const timeline = {
+      id: makeId(),
+      name: `${activeTimeline.name} copy`,
+      asOf: activeTimeline.asOf,
+      includeTimes: activeTimeline.includeTimes,
+      milestones: cloneMilestones(activeTimeline.milestones),
+      showToday: activeTimeline.showToday,
+    };
+
+    state.timelines.push(timeline);
+    loadTimelineIntoActiveState(timeline.id);
+    saveAndRender();
+  }
+
+  function deleteTimeline() {
+    if (state.timelines.length <= 1) {
+      return;
+    }
+
+    const confirmed =
+      typeof window.confirm !== "function" ||
+      window.confirm(`Delete "${state.name}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    const activeIndex = state.timelines.findIndex(function (timeline) {
+      return timeline.id === state.activeTimelineId;
+    });
+
+    state.timelines = state.timelines.filter(function (timeline) {
+      return timeline.id !== state.activeTimelineId;
+    });
+
+    const nextIndex = Math.min(Math.max(activeIndex, 0), state.timelines.length - 1);
+    loadTimelineIntoActiveState(state.timelines[nextIndex].id);
+    saveAndRender();
+  }
+
   function downloadSvg() {
     const blob = new Blob([currentSvgMarkup], {
       type: "image/svg+xml;charset=utf-8",
@@ -948,6 +1174,30 @@
     state.asOf = toDateValueForMode(new Date(), state.includeTimes);
     saveAndRender();
   });
+
+  elements.timelineNameInput.addEventListener("input", function (event) {
+    state.name = event.target.value;
+    saveState();
+    renderTimelineList();
+  });
+
+  elements.timelineList.addEventListener("click", function (event) {
+    const button = event.target.closest("[data-timeline-id]");
+
+    if (button) {
+      selectTimeline(button.dataset.timelineId);
+    }
+  });
+
+  elements.toggleSidebarButton.addEventListener("click", function () {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    saveState();
+    renderTimelineList();
+  });
+
+  elements.newTimelineButton.addEventListener("click", createTimeline);
+  elements.duplicateTimelineButton.addEventListener("click", duplicateTimeline);
+  elements.deleteTimelineButton.addEventListener("click", deleteTimeline);
 
   elements.addButton.addEventListener("click", addMilestone);
   elements.sortButton.addEventListener("click", sortMilestones);

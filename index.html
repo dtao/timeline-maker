@@ -8,11 +8,42 @@
     <script defer src="./app.js"></script>
   </head>
   <body>
+    <div class="workspace-shell" id="workspaceShell">
+      <aside class="timeline-sidebar" id="timelineSidebar" aria-label="Timelines">
+        <div class="sidebar-header">
+          <div class="sidebar-title">
+            <span>Timelines</span>
+            <strong id="timelineCountLabel">0</strong>
+          </div>
+          <button
+            id="toggleSidebarButton"
+            class="icon-button"
+            type="button"
+            aria-label="Collapse timeline list"
+          >
+            &lt;
+          </button>
+        </div>
+        <div class="sidebar-body">
+          <div id="timelineList" class="timeline-list"></div>
+          <div class="timeline-actions">
+            <button id="newTimelineButton" type="button">+ New</button>
+            <button id="duplicateTimelineButton" type="button">Duplicate</button>
+            <button id="deleteTimelineButton" type="button">Delete</button>
+          </div>
+        </div>
+      </aside>
+
     <main class="app-shell">
       <header class="app-header">
         <div>
           <p class="eyebrow">Milestone planner</p>
           <h1>Timeline Maker</h1>
+          <input
+            id="timelineNameInput"
+            class="timeline-name-input"
+            aria-label="Timeline name"
+          />
         </div>
 
         <dl class="metrics" aria-label="Timeline status summary">
@@ -78,5 +109,6 @@
         <div id="milestoneRows" class="editor-body"></div>
       </section>
     </main>
+    </div>
   </body>
 </html>
