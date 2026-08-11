@@ -10,6 +10,7 @@ date/time entries.
 - Completed milestones shown with reduced opacity and a green check signal
 - Overdue pending milestones shown with an amber warning signal and thicker border
 - SVG timeline download
+- Browser-local persistence across page refreshes
 
 ## Run
 

@@ -6,6 +6,7 @@
   const CHART_RIGHT = 92;
   const AXIS_Y = 268;
   const LANE_ORDER = [-1, 1, -2, 2, -3, 3];
+  const STORAGE_KEY = "timeline-maker-state-v1";
 
   const elements = {
     addButton: document.querySelector("#addButton"),
@@ -23,11 +24,7 @@
     upcomingCount: document.querySelector("#upcomingCount"),
   };
 
-  const state = {
-    asOf: toDateTimeInput(new Date()),
-    milestones: createExampleMilestones(new Date()),
-    showToday: true,
-  };
+  const state = loadSavedState();
 
   let currentSvgMarkup = "";
 
@@ -98,6 +95,97 @@
     }
 
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function getStorage() {
+    try {
+      return window.localStorage || null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function normalizeMilestone(candidate, index) {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+
+    return {
+      id:
+        typeof candidate.id === "string" && candidate.id.trim()
+          ? candidate.id
+          : `saved-${index}-${makeId()}`,
+      title: typeof candidate.title === "string" ? candidate.title : "",
+      at: typeof candidate.at === "string" ? candidate.at : "",
+      status: candidate.status === "completed" ? "completed" : "pending",
+    };
+  }
+
+  function loadSavedState() {
+    const now = new Date();
+    const fallback = {
+      asOf: toDateTimeInput(now),
+      milestones: createExampleMilestones(now),
+      showToday: true,
+    };
+    const storage = getStorage();
+
+    if (!storage) {
+      return fallback;
+    }
+
+    try {
+      const saved = JSON.parse(storage.getItem(STORAGE_KEY) || "null");
+
+      if (!saved || typeof saved !== "object") {
+        return fallback;
+      }
+
+      const savedMilestones = Array.isArray(saved.milestones)
+        ? saved.milestones
+            .map(function (milestone, index) {
+              return normalizeMilestone(milestone, index);
+            })
+            .filter(Boolean)
+        : fallback.milestones;
+
+      return {
+        asOf: typeof saved.asOf === "string" ? saved.asOf : fallback.asOf,
+        milestones: savedMilestones,
+        showToday:
+          typeof saved.showToday === "boolean"
+            ? saved.showToday
+            : fallback.showToday,
+      };
+    } catch (_error) {
+      return fallback;
+    }
+  }
+
+  function saveState() {
+    const storage = getStorage();
+
+    if (!storage) {
+      return;
+    }
+
+    try {
+      storage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          asOf: state.asOf,
+          milestones: state.milestones,
+          showToday: state.showToday,
+        }),
+      );
+    } catch (_error) {
+      // Keep the editor usable if browser storage is unavailable or full.
+    }
+  }
+
+  function saveAndRender() {
+    saveState();
+    render();
   }
 
   function escapeHtml(value) {
@@ -462,7 +550,7 @@
       .join("");
   }
 
-  function render() {
+  function renderTimelineAndCounts() {
     const asOfDate = parseDateTime(state.asOf);
     const parsedMilestones = getParsedMilestones(asOfDate);
     const counts = parsedMilestones.reduce(
@@ -481,8 +569,6 @@
     elements.overdueCount.textContent = String(counts.overdue);
     elements.upcomingCount.textContent = String(counts.upcoming);
 
-    renderRows(asOfDate);
-
     const model = buildTimelineModel(
       parsedMilestones,
       asOfDate,
@@ -490,9 +576,16 @@
     );
     currentSvgMarkup = renderChart(model, state.showToday);
     elements.timelineMount.innerHTML = currentSvgMarkup;
+
+    return asOfDate;
   }
 
-  function updateMilestone(id, field, value) {
+  function render() {
+    const asOfDate = renderTimelineAndCounts();
+    renderRows(asOfDate);
+  }
+
+  function updateMilestone(id, field, value, redrawRows) {
     state.milestones = state.milestones.map(function (milestone) {
       if (milestone.id !== id) {
         return milestone;
@@ -502,7 +595,13 @@
         [field]: value,
       });
     });
-    render();
+    saveState();
+
+    if (redrawRows) {
+      render();
+    } else {
+      renderTimelineAndCounts();
+    }
   }
 
   function addMilestone() {
@@ -526,7 +625,7 @@
       at: toDateTimeInput(nextDate),
       status: "pending",
     });
-    render();
+    saveAndRender();
   }
 
   function sortMilestones() {
@@ -539,13 +638,13 @@
         : Number.MAX_SAFE_INTEGER;
       return aTime - bTime;
     });
-    render();
+    saveAndRender();
   }
 
   function resetSample() {
     const asOfDate = parseDateTime(state.asOf) || new Date();
     state.milestones = createExampleMilestones(asOfDate);
-    render();
+    saveAndRender();
   }
 
   function downloadSvg() {
@@ -565,17 +664,17 @@
 
   elements.asOfInput.addEventListener("input", function (event) {
     state.asOf = event.target.value;
-    render();
+    saveAndRender();
   });
 
   elements.showTodayInput.addEventListener("change", function (event) {
     state.showToday = event.target.checked;
-    render();
+    saveAndRender();
   });
 
   elements.nowButton.addEventListener("click", function () {
     state.asOf = toDateTimeInput(new Date());
-    render();
+    saveAndRender();
   });
 
   elements.addButton.addEventListener("click", addMilestone);
@@ -588,7 +687,7 @@
     const id = event.target.dataset.id;
 
     if (field === "title" || field === "at") {
-      updateMilestone(id, field, event.target.value);
+      updateMilestone(id, field, event.target.value, false);
     }
   });
 
@@ -596,8 +695,8 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "status") {
-      updateMilestone(id, field, event.target.value);
+    if (field === "status" || field === "title" || field === "at") {
+      updateMilestone(id, field, event.target.value, true);
     }
   });
 
@@ -606,7 +705,7 @@
       state.milestones = state.milestones.filter(function (milestone) {
         return milestone.id !== event.target.dataset.id;
       });
-      render();
+      saveAndRender();
     }
   });
 
