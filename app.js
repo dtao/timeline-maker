@@ -548,7 +548,7 @@
         `
         : "";
 
-    const pointMarkup = model.points
+    const pointLayouts = model.points
       .map(function (point) {
         const style = getMarkerStyle(point.timelineState);
         const isTopLabel = point.labelSide === "top";
@@ -573,29 +573,75 @@
           point.timelineState === "overdue" ? "#d97706" : "#475569";
         const anchorWidth = point.timelineState === "overdue" ? 4 : 2;
         const anchorMaskRadius = 13;
+        const markerMaskRadius = LABEL_BADGE_RADIUS + 4;
+
+        return {
+          anchorColor: anchorColor,
+          anchorMaskRadius: anchorMaskRadius,
+          anchorWidth: anchorWidth,
+          badgeEdgeY: badgeEdgeY,
+          connectorColor: connectorColor,
+          connectorWidth: connectorWidth,
+          connectorY: connectorY,
+          dateLabel: dateLabel,
+          dateY: dateY,
+          labelOpacity: labelOpacity,
+          labelRectY: labelRectY,
+          markerMaskRadius: markerMaskRadius,
+          point: point,
+          style: style,
+          title: title,
+          titleY: titleY,
+        };
+      });
+    const connectorMarkup = pointLayouts
+      .map(function (layout) {
+        const point = layout.point;
+
+        return `
+          <path d="M ${point.x} ${model.axisY} V ${layout.connectorY} H ${point.labelX} V ${layout.badgeEdgeY}"
+            fill="none" opacity="${layout.labelOpacity}"
+            stroke="${layout.connectorColor}" stroke-linecap="round"
+            stroke-linejoin="round" stroke-width="${layout.connectorWidth}" />
+        `;
+      })
+      .join("");
+    const pointMaskMarkup = pointLayouts
+      .map(function (layout) {
+        const point = layout.point;
 
         return `
           <circle cx="${point.x}" cy="${model.axisY}" fill="#ffffff"
-            r="${anchorMaskRadius}" />
-          <g opacity="${labelOpacity}">
-            <path d="M ${point.x} ${model.axisY} V ${connectorY} H ${point.labelX} V ${badgeEdgeY}"
-              fill="none" stroke="${connectorColor}" stroke-linecap="round"
-              stroke-linejoin="round" stroke-width="${connectorWidth}" />
+            r="${layout.anchorMaskRadius}" />
+          <circle cx="${point.labelX}" cy="${point.y}" fill="#ffffff"
+            r="${layout.markerMaskRadius}" />
+          <rect fill="#ffffff" height="48" rx="7"
+            width="${point.labelWidth}" x="${point.labelLeft}"
+            y="${layout.labelRectY}" />
+        `;
+      })
+      .join("");
+    const pointMarkup = pointLayouts
+      .map(function (layout) {
+        const point = layout.point;
+
+        return `
+          <g opacity="${layout.labelOpacity}">
             <circle cx="${point.x}" cy="${model.axisY}" fill="#ffffff" r="9"
-              stroke="${anchorColor}" stroke-width="${anchorWidth}" />
+              stroke="${layout.anchorColor}" stroke-width="${layout.anchorWidth}" />
             <g transform="translate(${point.labelX} ${point.y})">
-              <circle fill="${style.fill}" opacity="${style.opacity}" r="21"
-                stroke="${style.stroke}" stroke-width="${style.strokeWidth}" />
+              <circle fill="${layout.style.fill}" opacity="${layout.style.opacity}" r="21"
+                stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
               ${statusIcon(point.timelineState)}
             </g>
             <rect fill="#ffffff" height="48" rx="7"
               stroke="#e2e8f0" stroke-width="1"
               width="${point.labelWidth}" x="${point.labelLeft}"
-              y="${labelRectY}" />
+              y="${layout.labelRectY}" />
             <text fill="#0f172a" font-size="18" font-weight="800"
-              text-anchor="middle" x="${point.labelX}" y="${titleY}">${title}</text>
+              text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
             <text fill="#64748b" font-size="15" font-weight="600"
-              text-anchor="middle" x="${point.labelX}" y="${dateY}">${dateLabel}</text>
+              text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
           </g>
         `;
       })
@@ -613,6 +659,8 @@
           y1="${model.axisY}" y2="${model.axisY}" />
         ${markerMarkup}
         ${emptyMarkup}
+        ${connectorMarkup}
+        ${pointMaskMarkup}
         ${pointMarkup}
       </svg>
     `;
