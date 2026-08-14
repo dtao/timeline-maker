@@ -45,6 +45,8 @@
     resetButton: document.querySelector("#resetButton"),
     showTodayInput: document.querySelector("#showTodayInput"),
     sortButton: document.querySelector("#sortButton"),
+    statusMenuLayer: document.querySelector("#statusMenuLayer"),
+    titleEditLayer: document.querySelector("#titleEditLayer"),
     timelineCountLabel: document.querySelector("#timelineCountLabel"),
     timelineList: document.querySelector("#timelineList"),
     timelineNameInput: document.querySelector("#timelineNameInput"),
@@ -58,10 +60,15 @@
   const state = loadSavedState();
 
   let currentSvgMarkup = "";
+  let currentTimelineModel = null;
+  let dragState = null;
+  let editingTitleMilestoneId = "";
   let ownerMenuMilestoneId = "";
   let ownerMenuPosition = { left: 0, top: 0 };
   let personDialogContext = null;
   let pendingPersonPhotoDataUrl = "";
+  let statusMenuMilestoneId = "";
+  let statusMenuPosition = { left: 0, top: 0 };
 
   function pad(value) {
     return String(value).padStart(2, "0");
@@ -610,6 +617,12 @@
     });
   }
 
+  function closestMatch(target, selector) {
+    return target && typeof target.closest === "function"
+      ? target.closest(selector)
+      : null;
+  }
+
   function shortLabel(value, maxLength) {
     const trimmed = String(value || "").trim();
     const limit = maxLength || 28;
@@ -925,6 +938,67 @@
     );
   }
 
+  function roundTimestampForMode(timestamp, includeTimes) {
+    if (includeTimes) {
+      return Math.round(timestamp / (15 * 60 * 1000)) * 15 * 60 * 1000;
+    }
+
+    const date = new Date(timestamp);
+    const dayStart = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    );
+
+    if (timestamp - dayStart.getTime() >= DAY_MS / 2) {
+      dayStart.setDate(dayStart.getDate() + 1);
+    }
+
+    return dayStart.getTime();
+  }
+
+  function dateValueFromTimestamp(timestamp, includeTimes) {
+    return toDateValueForMode(
+      new Date(roundTimestampForMode(timestamp, includeTimes)),
+      includeTimes,
+    );
+  }
+
+  function chartXToTimestamp(x, model) {
+    const drawableWidth = CHART_WIDTH - CHART_LEFT - CHART_RIGHT;
+    const clampedX = clamp(x, CHART_LEFT, CHART_WIDTH - CHART_RIGHT);
+
+    return (
+      model.minTime +
+      ((clampedX - CHART_LEFT) / drawableWidth) *
+        Math.max(model.maxTime - model.minTime, 1)
+    );
+  }
+
+  function clientXToChartX(clientX, model) {
+    const svg =
+      elements.timelineMount.querySelector &&
+      elements.timelineMount.querySelector("svg");
+    const rect =
+      svg && typeof svg.getBoundingClientRect === "function"
+        ? svg.getBoundingClientRect()
+        : { left: 0, width: model.width };
+
+    return ((clientX - rect.left) / Math.max(rect.width, 1)) * model.width;
+  }
+
+  function clientDeltaToChartDelta(clientDelta, model) {
+    const svg =
+      elements.timelineMount.querySelector &&
+      elements.timelineMount.querySelector("svg");
+    const rect =
+      svg && typeof svg.getBoundingClientRect === "function"
+        ? svg.getBoundingClientRect()
+        : { width: model.width };
+
+    return (clientDelta / Math.max(rect.width, 1)) * model.width;
+  }
+
   function buildTicks(minTime, maxTime) {
     return Array.from({ length: 6 }, function (_, index) {
       const timestamp = minTime + ((maxTime - minTime) / 5) * index;
@@ -1179,19 +1253,17 @@
 
   function renderSvgOwnerAvatar(layout, index) {
     const point = layout.point;
-
-    if (!shouldRenderOwnerAvatar(point)) {
-      return "";
-    }
-
+    const hasOwner = shouldRenderOwnerAvatar(point);
     const avatar = ownerAvatarPosition(point);
     const clipId = `avatarClip${index}`;
     const avatarSrc = ownerAvatarSrc(point);
     const initials = escapeHtml(ownerInitials(point));
-    const owner = escapeHtml(ownerLabel(point) || "Milestone owner");
+    const owner = escapeHtml(ownerLabel(point) || "Assign owner");
     const fill = ownerAvatarColor(point);
-    const imageMarkup = avatarSrc
-      ? `
+    let avatarMarkup;
+
+    if (avatarSrc) {
+      avatarMarkup = `
           <defs>
             <clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">
               <circle cx="${avatar.x}" cy="${avatar.y}" r="${AVATAR_RADIUS}" />
@@ -1202,17 +1274,28 @@
             width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"
             preserveAspectRatio="xMidYMid slice"
             clip-path="url(#${clipId})" />
-        `
-      : `
+        `;
+    } else if (hasOwner) {
+      avatarMarkup = `
           <circle cx="${avatar.x}" cy="${avatar.y}" fill="${fill}" r="${AVATAR_RADIUS}" />
           <text fill="#ffffff" font-size="11" font-weight="900"
             text-anchor="middle" x="${avatar.x}" y="${avatar.y + 4}">${initials}</text>
         `;
+    } else {
+      avatarMarkup = `
+          <circle cx="${avatar.x}" cy="${avatar.y}" fill="#f8fafc" r="${AVATAR_RADIUS}"
+            stroke="#0f766e" stroke-width="2" />
+          <text fill="#0f766e" font-size="18" font-weight="900"
+            text-anchor="middle" x="${avatar.x}" y="${avatar.y + 6}">+</text>
+        `;
+    }
 
     return `
-      <g>
+      <g aria-label="${owner}" class="timeline-owner-action"
+        data-action="toggle-owner-menu" data-id="${escapeHtml(point.id)}"
+        role="button" tabindex="0">
         <title>${owner}</title>
-        ${imageMarkup}
+        ${avatarMarkup}
         <circle cx="${avatar.x}" cy="${avatar.y}" fill="none" r="${AVATAR_RADIUS}"
           stroke="#ffffff" stroke-width="3" />
         <circle cx="${avatar.x}" cy="${avatar.y}" fill="none" r="${AVATAR_RADIUS}"
@@ -1223,11 +1306,6 @@
 
   function renderSvgOwnerAvatarMask(layout) {
     const point = layout.point;
-
-    if (!shouldRenderOwnerAvatar(point)) {
-      return "";
-    }
-
     const avatar = ownerAvatarPosition(point);
 
     return `
@@ -1360,20 +1438,29 @@
 
         return `
           <g opacity="${layout.labelOpacity}">
-            <circle cx="${point.x}" cy="${model.axisY}" fill="#ffffff" r="9"
-              stroke="${layout.anchorColor}" stroke-width="${layout.anchorWidth}" />
-            <g transform="translate(${point.labelX} ${point.y})">
+            <circle class="timeline-date-handle" cx="${point.x}" cy="${model.axisY}"
+              data-action="drag-date" data-id="${escapeHtml(point.id)}"
+              fill="#ffffff" r="9" stroke="${layout.anchorColor}"
+              stroke-width="${layout.anchorWidth}" />
+            <g aria-label="Change status or drag to reschedule ${layout.title}"
+              class="timeline-marker-action" data-action="drag-date"
+              data-id="${escapeHtml(point.id)}" role="button" tabindex="0"
+              transform="translate(${point.labelX} ${point.y})">
               <circle fill="${layout.style.fill}" opacity="${layout.style.opacity}" r="21"
                 stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
               ${statusIcon(point.timelineState)}
             </g>
             ${renderSvgOwnerAvatar(layout, index)}
-            <rect fill="#ffffff" height="48" rx="7"
-              stroke="#e2e8f0" stroke-width="1"
-              width="${point.labelWidth}" x="${point.labelLeft}"
-              y="${layout.labelRectY}" />
-            <text fill="#0f172a" font-size="18" font-weight="800"
-              text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
+            <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
+              data-action="edit-title" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0">
+              <rect fill="#ffffff" height="48" rx="7"
+                stroke="#e2e8f0" stroke-width="1"
+                width="${point.labelWidth}" x="${point.labelLeft}"
+                y="${layout.labelRectY}" />
+              <text fill="#0f172a" font-size="18" font-weight="800"
+                text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
+            </g>
             <text fill="#64748b" font-size="15" font-weight="600"
               text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
           </g>
@@ -1587,6 +1674,49 @@
     `;
   }
 
+  function renderStatusMenuLayer() {
+    if (!statusMenuMilestoneId) {
+      elements.statusMenuLayer.innerHTML = "";
+      return;
+    }
+
+    const milestone = state.milestones.find(function (candidate) {
+      return candidate.id === statusMenuMilestoneId;
+    });
+
+    if (!milestone) {
+      statusMenuMilestoneId = "";
+      elements.statusMenuLayer.innerHTML = "";
+      return;
+    }
+
+    elements.statusMenuLayer.innerHTML = `
+      <div
+        class="status-menu-panel"
+        style="left: ${statusMenuPosition.left}px; top: ${statusMenuPosition.top}px;"
+      >
+        <button
+          class="status-menu-item${milestone.status === "pending" ? " active" : ""}"
+          data-action="set-status"
+          data-id="${escapeHtml(milestone.id)}"
+          data-status="pending"
+          type="button"
+        >
+          Pending
+        </button>
+        <button
+          class="status-menu-item${milestone.status === "completed" ? " active" : ""}"
+          data-action="set-status"
+          data-id="${escapeHtml(milestone.id)}"
+          data-status="completed"
+          type="button"
+        >
+          Completed
+        </button>
+      </div>
+    `;
+  }
+
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
@@ -1664,6 +1794,7 @@
       state.showToday,
       state.includeTimes,
     );
+    currentTimelineModel = model;
     currentSvgMarkup = renderChart(model, state.showToday);
     elements.timelineMount.innerHTML = currentSvgMarkup;
 
@@ -1675,6 +1806,7 @@
     const asOfDate = renderTimelineAndCounts();
     renderRows(asOfDate);
     renderOwnerMenuLayer();
+    renderStatusMenuLayer();
   }
 
   function updateMilestone(id, field, value, redrawRows) {
@@ -1991,27 +2123,185 @@
     URL.revokeObjectURL(url);
   }
 
-  function positionOwnerMenu(button) {
+  function positionFloatingMenu(target, width, height) {
     const rect =
-      button && typeof button.getBoundingClientRect === "function"
-        ? button.getBoundingClientRect()
+      target && typeof target.getBoundingClientRect === "function"
+        ? target.getBoundingClientRect()
         : { bottom: 72, left: 72 };
     const viewportWidth =
       typeof window.innerWidth === "number" ? window.innerWidth : CHART_WIDTH;
     const viewportHeight =
       typeof window.innerHeight === "number" ? window.innerHeight : 760;
-    const menuWidth = 280;
-    const menuHeight = Math.min(360, viewportHeight - 24);
 
-    ownerMenuPosition = {
-      left: clamp(rect.left, 12, Math.max(viewportWidth - menuWidth - 12, 12)),
-      top: clamp(rect.bottom + 6, 12, Math.max(viewportHeight - menuHeight - 12, 12)),
+    return {
+      left: clamp(rect.left, 12, Math.max(viewportWidth - width - 12, 12)),
+      top: clamp(rect.bottom + 6, 12, Math.max(viewportHeight - height - 12, 12)),
     };
+  }
+
+  function positionOwnerMenu(target) {
+    const viewportHeight =
+      typeof window.innerHeight === "number" ? window.innerHeight : 760;
+
+    ownerMenuPosition = positionFloatingMenu(
+      target,
+      280,
+      Math.min(360, viewportHeight - 24),
+    );
+  }
+
+  function positionStatusMenu(target) {
+    statusMenuPosition = positionFloatingMenu(target, 190, 96);
+  }
+
+  function closeFloatingMenus() {
+    ownerMenuMilestoneId = "";
+    statusMenuMilestoneId = "";
+    renderOwnerMenuLayer();
+    renderStatusMenuLayer();
   }
 
   function assignOwner(milestoneId, personId) {
     ownerMenuMilestoneId = "";
+    statusMenuMilestoneId = "";
     updateMilestone(milestoneId, "ownerId", personId, true);
+  }
+
+  function assignStatus(milestoneId, status) {
+    ownerMenuMilestoneId = "";
+    statusMenuMilestoneId = "";
+    updateMilestone(
+      milestoneId,
+      "status",
+      status === "completed" ? "completed" : "pending",
+      true,
+    );
+  }
+
+  function toggleOwnerMenu(milestoneId, target) {
+    closeTitleEditor(false);
+    statusMenuMilestoneId = "";
+    ownerMenuMilestoneId =
+      ownerMenuMilestoneId === milestoneId ? "" : milestoneId;
+
+    if (ownerMenuMilestoneId) {
+      positionOwnerMenu(target);
+    }
+
+    renderOwnerMenuLayer();
+    renderStatusMenuLayer();
+  }
+
+  function openStatusMenu(milestoneId, target) {
+    closeTitleEditor(false);
+    ownerMenuMilestoneId = "";
+    statusMenuMilestoneId =
+      statusMenuMilestoneId === milestoneId ? "" : milestoneId;
+
+    if (statusMenuMilestoneId) {
+      positionStatusMenu(target);
+    }
+
+    renderOwnerMenuLayer();
+    renderStatusMenuLayer();
+  }
+
+  function closeTitleEditor(saveChanges) {
+    if (!editingTitleMilestoneId) {
+      return;
+    }
+
+    const input =
+      elements.titleEditLayer.querySelector &&
+      elements.titleEditLayer.querySelector("input");
+    const milestoneId = editingTitleMilestoneId;
+    const value = input ? input.value.trim() : "";
+
+    editingTitleMilestoneId = "";
+    elements.titleEditLayer.innerHTML = "";
+
+    if (saveChanges) {
+      updateMilestone(
+        milestoneId,
+        "title",
+        value || "Untitled milestone",
+        true,
+      );
+    }
+  }
+
+  function openTitleEditor(milestoneId, target) {
+    const milestone = state.milestones.find(function (candidate) {
+      return candidate.id === milestoneId;
+    });
+
+    if (
+      !milestone ||
+      !target ||
+      typeof target.getBoundingClientRect !== "function"
+    ) {
+      return;
+    }
+
+    closeFloatingMenus();
+    closeTitleEditor(false);
+
+    const rect = target.getBoundingClientRect();
+    const viewportWidth =
+      typeof window.innerWidth === "number" ? window.innerWidth : CHART_WIDTH;
+    const width = clamp(Math.max(rect.width + 48, 190), 190, viewportWidth - 24);
+    const left = clamp(
+      rect.left + rect.width / 2 - width / 2,
+      12,
+      Math.max(viewportWidth - width - 12, 12),
+    );
+    const top = Math.max(rect.top - 7, 12);
+
+    editingTitleMilestoneId = milestoneId;
+    elements.titleEditLayer.innerHTML = `
+      <input
+        class="timeline-title-editor"
+        data-id="${escapeHtml(milestoneId)}"
+        style="left: ${left}px; top: ${top}px; width: ${width}px;"
+        value="${escapeHtml(milestone.title)}"
+      />
+    `;
+
+    const input =
+      elements.titleEditLayer.querySelector &&
+      elements.titleEditLayer.querySelector("input");
+
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  function updateMilestoneDateFromChartX(milestoneId, chartX, model) {
+    if (!model) {
+      return;
+    }
+
+    const timestamp = chartXToTimestamp(chartX, model);
+    const value = dateValueFromTimestamp(timestamp, state.includeTimes);
+    const milestone = state.milestones.find(function (candidate) {
+      return candidate.id === milestoneId;
+    });
+
+    if (!milestone || milestone.at === value) {
+      return;
+    }
+
+    updateMilestone(milestoneId, "at", value, true);
+  }
+
+  function updateMilestoneDateFromDrag(clientX, drag) {
+    updateMilestoneDateFromChartX(
+      drag.milestoneId,
+      drag.startChartX +
+        clientDeltaToChartDelta(clientX - drag.startClientX, drag.model),
+      drag.model,
+    );
   }
 
   elements.asOfInput.addEventListener("input", function (event) {
@@ -2041,7 +2331,7 @@
   });
 
   elements.timelineList.addEventListener("click", function (event) {
-    const button = event.target.closest("[data-timeline-id]");
+    const button = closestMatch(event.target, "[data-timeline-id]");
 
     if (button) {
       selectTimeline(button.dataset.timelineId);
@@ -2063,6 +2353,58 @@
   elements.resetButton.addEventListener("click", resetSample);
   elements.downloadButton.addEventListener("click", downloadSvg);
 
+  elements.timelineMount.addEventListener("click", function (event) {
+    const titleTarget = closestMatch(event.target, '[data-action="edit-title"]');
+
+    if (titleTarget) {
+      openTitleEditor(titleTarget.dataset.id, titleTarget);
+      return;
+    }
+
+    const ownerTarget = closestMatch(
+      event.target,
+      '[data-action="toggle-owner-menu"]',
+    );
+
+    if (ownerTarget) {
+      toggleOwnerMenu(ownerTarget.dataset.id, ownerTarget);
+    }
+  });
+
+  elements.timelineMount.addEventListener("pointerdown", function (event) {
+    const target = closestMatch(event.target, '[data-action="drag-date"]');
+
+    if (
+      !target ||
+      !currentTimelineModel ||
+      (typeof event.button === "number" && event.button !== 0)
+    ) {
+      return;
+    }
+
+    closeTitleEditor(false);
+    closeFloatingMenus();
+    const point =
+      currentTimelineModel &&
+      currentTimelineModel.points.find(function (candidate) {
+        return candidate.id === target.dataset.id;
+      });
+    dragState = {
+      milestoneId: target.dataset.id,
+      model: currentTimelineModel,
+      moved: false,
+      startChartX: point
+        ? point.x
+        : clientXToChartX(event.clientX, currentTimelineModel),
+      startClientX: event.clientX,
+      target: target,
+    };
+
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+  });
+
   elements.milestoneRows.addEventListener("input", function (event) {
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
@@ -2082,17 +2424,13 @@
   });
 
   elements.milestoneRows.addEventListener("click", function (event) {
-    const ownerButton = event.target.closest(
+    const ownerButton = closestMatch(
+      event.target,
       '[data-action="toggle-owner-menu"]',
     );
 
     if (ownerButton) {
-      ownerMenuMilestoneId =
-        ownerMenuMilestoneId === ownerButton.dataset.id
-          ? ""
-          : ownerButton.dataset.id;
-      positionOwnerMenu(ownerButton);
-      renderOwnerMenuLayer();
+      toggleOwnerMenu(ownerButton.dataset.id, ownerButton);
       return;
     }
 
@@ -2104,8 +2442,29 @@
     }
   });
 
+  elements.titleEditLayer.addEventListener("keydown", function (event) {
+    if (!editingTitleMilestoneId) {
+      return;
+    }
+
+    if (event.key === "Enter") {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      closeTitleEditor(true);
+    }
+
+    if (event.key === "Escape") {
+      closeTitleEditor(false);
+    }
+  });
+
+  elements.titleEditLayer.addEventListener("focusout", function () {
+    closeTitleEditor(true);
+  });
+
   elements.ownerMenuLayer.addEventListener("click", function (event) {
-    const actionTarget = event.target.closest("[data-action]");
+    const actionTarget = closestMatch(event.target, "[data-action]");
 
     if (!actionTarget) {
       ownerMenuMilestoneId = "";
@@ -2124,6 +2483,20 @@
       ownerMenuMilestoneId = "";
       renderOwnerMenuLayer();
       openPersonDialog(milestoneId);
+    }
+  });
+
+  elements.statusMenuLayer.addEventListener("click", function (event) {
+    const actionTarget = closestMatch(event.target, "[data-action]");
+
+    if (!actionTarget) {
+      statusMenuMilestoneId = "";
+      renderStatusMenuLayer();
+      return;
+    }
+
+    if (actionTarget.dataset.action === "set-status") {
+      assignStatus(actionTarget.dataset.id, actionTarget.dataset.status);
     }
   });
 
@@ -2148,17 +2521,54 @@
   elements.personEmailInput.addEventListener("input", renderPersonPhotoPreview);
 
   if (typeof document.addEventListener === "function") {
+    document.addEventListener("pointermove", function (event) {
+      if (!dragState) {
+        return;
+      }
+
+      if (Math.abs(event.clientX - dragState.startClientX) > 3) {
+        dragState.moved = true;
+      }
+
+      if (!dragState.moved) {
+        return;
+      }
+
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+
+      updateMilestoneDateFromDrag(event.clientX, dragState);
+    });
+
+    document.addEventListener("pointerup", function (event) {
+      if (!dragState) {
+        return;
+      }
+
+      const completedDrag = dragState;
+      dragState = null;
+
+      if (completedDrag.moved) {
+        updateMilestoneDateFromDrag(event.clientX, completedDrag);
+        return;
+      }
+
+      openStatusMenu(completedDrag.milestoneId, completedDrag.target);
+    });
+
     document.addEventListener("click", function (event) {
       if (
-        !ownerMenuMilestoneId ||
-        event.target.closest(".owner-menu-panel") ||
-        event.target.closest('[data-action="toggle-owner-menu"]')
+        (!ownerMenuMilestoneId && !statusMenuMilestoneId) ||
+        closestMatch(event.target, ".owner-menu-panel") ||
+        closestMatch(event.target, ".status-menu-panel") ||
+        closestMatch(event.target, '[data-action="toggle-owner-menu"]') ||
+        closestMatch(event.target, '[data-action="drag-date"]')
       ) {
         return;
       }
 
-      ownerMenuMilestoneId = "";
-      renderOwnerMenuLayer();
+      closeFloatingMenus();
     });
   }
 
