@@ -999,6 +999,39 @@
     return (clientDelta / Math.max(rect.width, 1)) * model.width;
   }
 
+  function getWeekendBands(minTime, maxTime) {
+    const cursor = new Date(minTime);
+    cursor.setHours(0, 0, 0, 0);
+
+    if (cursor.getDay() === 0) {
+      cursor.setDate(cursor.getDate() - 1);
+    } else if (cursor.getDay() !== 6) {
+      cursor.setDate(cursor.getDate() + 6 - cursor.getDay());
+    }
+
+    const bands = [];
+
+    while (cursor.getTime() < maxTime) {
+      const weekendStart = cursor.getTime();
+      const weekendEnd = new Date(cursor);
+      weekendEnd.setDate(weekendEnd.getDate() + 2);
+
+      const start = Math.max(weekendStart, minTime);
+      const end = Math.min(weekendEnd.getTime(), maxTime);
+
+      if (end > start) {
+        bands.push({
+          end: end,
+          start: start,
+        });
+      }
+
+      cursor.setDate(cursor.getDate() + 7);
+    }
+
+    return bands;
+  }
+
   function buildTicks(minTime, maxTime) {
     return Array.from({ length: 6 }, function (_, index) {
       const timestamp = minTime + ((maxTime - minTime) / 5) * index;
@@ -1190,6 +1223,7 @@
       includeTimes: includeTimes,
       points: points,
       ticks: buildTicks(minTime, maxTime),
+      weekendBands: getWeekendBands(minTime, maxTime),
       width: CHART_WIDTH,
     };
   }
@@ -1318,6 +1352,18 @@
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
     const tickLabelY = model.height - 28;
+    const weekendBandMarkup = model.weekendBands
+      .map(function (band) {
+        const x = getX(band.start, model.minTime, model.maxTime);
+        const endX = getX(band.end, model.minTime, model.maxTime);
+
+        return `
+          <rect fill="#f1f5f9" height="${gridBottom - 52}"
+            opacity="0.72" width="${Math.max(endX - x, 0)}"
+            x="${x}" y="52" />
+        `;
+      })
+      .join("");
     const ticksMarkup = model.ticks
       .map(function (tick) {
         return `
@@ -1474,6 +1520,7 @@
         viewBox="0 0 ${model.width} ${model.height}">
         <rect fill="#ffffff" height="${model.height}" rx="8"
           width="${model.width}" />
+        ${weekendBandMarkup}
         ${ticksMarkup}
         <line stroke="#000000" stroke-linecap="round"
           stroke-width="3" x1="${CHART_LEFT}" x2="${CHART_WIDTH - CHART_RIGHT}"

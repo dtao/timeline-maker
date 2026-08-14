@@ -12,6 +12,7 @@ entries, with optional time support.
 - Multiple saved timelines with select, create, duplicate, delete, and rename
 - Date-only inputs by default, with an optional "Specify times" mode
 - Optional red current-date marker
+- Light gray weekend bands
 - Completed milestones shown with reduced opacity and a green check signal
 - Overdue pending milestones shown with an amber warning signal and thicker border
 - Close milestones stack into non-overlapping label rows with elbow connectors
