@@ -6,8 +6,8 @@ entries, with optional time support.
 ## Features
 
 - Editable milestone title, date, and status fields
-- Optional milestone owners with initials, Gravatar email lookup, or uploaded
-  local avatar images
+- Shared people list for milestone owners, with initials, Gravatar email lookup,
+  or uploaded local avatar images
 - Multiple saved timelines with select, create, duplicate, delete, and rename
 - Date-only inputs by default, with an optional "Specify times" mode
 - Optional red current-date marker
@@ -17,8 +17,8 @@ entries, with optional time support.
 - SVG timeline download
 - Browser-local persistence across page refreshes
 
-Uploaded avatar images are resized and saved in browser-local storage with the
-rest of the timeline data.
+Uploaded avatar images are resized and saved once per person in browser-local
+storage with the rest of the timeline data.
 
 ## Run
 

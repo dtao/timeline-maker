@@ -103,7 +103,6 @@
           <span>Milestone</span>
           <span id="dateColumnLabel">Date</span>
           <span>Owner</span>
-          <span>Avatar</span>
           <span>Status</span>
           <span>Signal</span>
           <span aria-hidden="true"></span>
@@ -112,5 +111,53 @@
       </section>
     </main>
     </div>
+
+    <div id="ownerMenuLayer" class="owner-menu-layer"></div>
+
+    <dialog id="personDialog" class="person-dialog">
+      <form id="personForm" class="person-form" method="dialog">
+        <div class="person-dialog-header">
+          <h2 id="personDialogTitle">Add person</h2>
+          <button
+            id="cancelPersonButton"
+            class="icon-button"
+            type="button"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <label class="person-field">
+          <span>Name</span>
+          <input id="personNameInput" autocomplete="name" required />
+        </label>
+
+        <label class="person-field">
+          <span>Email</span>
+          <input id="personEmailInput" autocomplete="email" type="email" />
+        </label>
+
+        <div class="person-avatar-field">
+          <div id="personPhotoPreview" class="person-photo-preview"></div>
+          <div class="person-avatar-actions">
+            <label class="upload-button">
+              Upload avatar
+              <input
+                id="personPhotoInput"
+                class="file-input"
+                type="file"
+                accept="image/*"
+              />
+            </label>
+            <button id="clearPersonPhotoButton" type="button">Clear avatar</button>
+          </div>
+        </div>
+
+        <div class="person-dialog-actions">
+          <button id="savePersonButton" type="submit">Save person</button>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>

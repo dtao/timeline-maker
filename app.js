@@ -32,7 +32,16 @@
     milestoneRows: document.querySelector("#milestoneRows"),
     newTimelineButton: document.querySelector("#newTimelineButton"),
     nowButton: document.querySelector("#nowButton"),
+    cancelPersonButton: document.querySelector("#cancelPersonButton"),
+    clearPersonPhotoButton: document.querySelector("#clearPersonPhotoButton"),
+    ownerMenuLayer: document.querySelector("#ownerMenuLayer"),
     overdueCount: document.querySelector("#overdueCount"),
+    personDialog: document.querySelector("#personDialog"),
+    personEmailInput: document.querySelector("#personEmailInput"),
+    personForm: document.querySelector("#personForm"),
+    personNameInput: document.querySelector("#personNameInput"),
+    personPhotoInput: document.querySelector("#personPhotoInput"),
+    personPhotoPreview: document.querySelector("#personPhotoPreview"),
     resetButton: document.querySelector("#resetButton"),
     showTodayInput: document.querySelector("#showTodayInput"),
     sortButton: document.querySelector("#sortButton"),
@@ -49,6 +58,10 @@
   const state = loadSavedState();
 
   let currentSvgMarkup = "";
+  let ownerMenuMilestoneId = "";
+  let ownerMenuPosition = { left: 0, top: 0 };
+  let personDialogContext = null;
+  let pendingPersonPhotoDataUrl = "";
 
   function pad(value) {
     return String(value).padStart(2, "0");
@@ -121,51 +134,76 @@
     return date;
   }
 
+  function createExamplePeople() {
+    return [
+      {
+        id: "person-ari-chen",
+        email: "",
+        name: "Ari Chen",
+        photoDataUrl: "",
+      },
+      {
+        id: "person-maya-patel",
+        email: "",
+        name: "Maya Patel",
+        photoDataUrl: "",
+      },
+      {
+        id: "person-jon-bell",
+        email: "",
+        name: "Jon Bell",
+        photoDataUrl: "",
+      },
+      {
+        id: "person-sam-rivera",
+        email: "",
+        name: "Sam Rivera",
+        photoDataUrl: "",
+      },
+      {
+        id: "person-nina-park",
+        email: "",
+        name: "Nina Park",
+        photoDataUrl: "",
+      },
+    ];
+  }
+
   function createExampleMilestones(anchor, includeTimes) {
     return [
       {
         id: "brief-approved",
         title: "Brief approved",
         at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
-        ownerEmail: "",
-        ownerName: "Ari Chen",
-        ownerPhotoDataUrl: "",
+        ownerId: "person-ari-chen",
         status: "completed",
       },
       {
         id: "data-freeze",
         title: "Data freeze",
         at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
-        ownerEmail: "",
-        ownerName: "Maya Patel",
-        ownerPhotoDataUrl: "",
+        ownerId: "person-maya-patel",
         status: "completed",
       },
       {
         id: "design-review",
         title: "Design review",
         at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
-        ownerEmail: "",
-        ownerName: "Jon Bell",
-        ownerPhotoDataUrl: "",
+        ownerId: "person-jon-bell",
         status: "pending",
       },
       {
         id: "beta-launch",
         title: "Beta launch",
         at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
-        ownerEmail: "",
-        ownerName: "Sam Rivera",
-        ownerPhotoDataUrl: "",
+        ownerId: "person-sam-rivera",
         status: "pending",
       },
       {
         id: "public-release",
         title: "Public release",
         at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
-        ownerEmail: "",
-        ownerName: "Nina Park",
-        ownerPhotoDataUrl: "",
+        ownerId: "person-nina-park",
         status: "pending",
       },
     ];
@@ -187,9 +225,149 @@
     }
   }
 
-  function normalizeMilestone(candidate, index) {
+  function normalizePerson(candidate, index) {
     if (!candidate || typeof candidate !== "object") {
       return null;
+    }
+
+    const name =
+      typeof candidate.name === "string"
+        ? candidate.name
+        : typeof candidate.ownerName === "string"
+          ? candidate.ownerName
+          : "";
+    const email =
+      typeof candidate.email === "string"
+        ? candidate.email
+        : typeof candidate.ownerEmail === "string"
+          ? candidate.ownerEmail
+          : "";
+    const photoDataUrl =
+      typeof candidate.photoDataUrl === "string"
+        ? candidate.photoDataUrl
+        : typeof candidate.ownerPhotoDataUrl === "string"
+          ? candidate.ownerPhotoDataUrl
+          : "";
+
+    if (!name.trim() && !email.trim() && !photoDataUrl) {
+      return null;
+    }
+
+    return {
+      id:
+        typeof candidate.id === "string" && candidate.id.trim()
+          ? candidate.id
+          : `person-${index}-${makeId()}`,
+      email: email,
+      name: name,
+      photoDataUrl: photoDataUrl,
+    };
+  }
+
+  function personSignature(name, email, photoDataUrl) {
+    const normalizedEmail = normalizeOwnerEmail(email);
+    const normalizedName = String(name || "").trim().toLowerCase();
+
+    if (normalizedEmail) {
+      return `email:${normalizedEmail}`;
+    }
+
+    if (normalizedName) {
+      return `name:${normalizedName}`;
+    }
+
+    return photoDataUrl ? `photo:${hashString(photoDataUrl)}` : "";
+  }
+
+  function findOrCreatePerson(people, name, email, photoDataUrl) {
+    const signature = personSignature(name, email, photoDataUrl);
+    const existing = signature
+      ? people.find(function (person) {
+          return (
+            personSignature(person.name, person.email, person.photoDataUrl) ===
+            signature
+          );
+        })
+      : null;
+
+    if (existing) {
+      return existing;
+    }
+
+    const person = {
+      id: makeId(),
+      email: email || "",
+      name: name || "",
+      photoDataUrl: photoDataUrl || "",
+    };
+
+    people.push(person);
+    return person;
+  }
+
+  function normalizePeople(candidates) {
+    const people = Array.isArray(candidates)
+      ? candidates
+          .map(function (person, index) {
+            return normalizePerson(person, index);
+          })
+          .filter(Boolean)
+      : [];
+    const seen = new Set();
+
+    return people.filter(function (person) {
+      const id = person.id.trim();
+
+      if (seen.has(id)) {
+        return false;
+      }
+
+      seen.add(id);
+      person.id = id;
+      return true;
+    });
+  }
+
+  function personExists(people, personId) {
+    return people.some(function (person) {
+      return person.id === personId;
+    });
+  }
+
+  function normalizeMilestone(candidate, index, people) {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+
+    const legacyOwnerName =
+      typeof candidate.ownerName === "string" ? candidate.ownerName.trim() : "";
+    const legacyOwnerEmail =
+      typeof candidate.ownerEmail === "string"
+        ? candidate.ownerEmail.trim()
+        : "";
+    const legacyOwnerPhotoDataUrl =
+      typeof candidate.ownerPhotoDataUrl === "string"
+        ? candidate.ownerPhotoDataUrl
+        : "";
+    let ownerId =
+      typeof candidate.ownerId === "string" && candidate.ownerId.trim()
+        ? candidate.ownerId.trim()
+        : "";
+
+    if (ownerId && !personExists(people, ownerId)) {
+      ownerId = "";
+    }
+
+    if (
+      !ownerId &&
+      (legacyOwnerName || legacyOwnerEmail || legacyOwnerPhotoDataUrl)
+    ) {
+      ownerId = findOrCreatePerson(
+        people,
+        legacyOwnerName,
+        legacyOwnerEmail,
+        legacyOwnerPhotoDataUrl,
+      ).id;
     }
 
     return {
@@ -199,14 +377,7 @@
           : `saved-${index}-${makeId()}`,
       title: typeof candidate.title === "string" ? candidate.title : "",
       at: typeof candidate.at === "string" ? candidate.at : "",
-      ownerEmail:
-        typeof candidate.ownerEmail === "string" ? candidate.ownerEmail : "",
-      ownerName:
-        typeof candidate.ownerName === "string" ? candidate.ownerName : "",
-      ownerPhotoDataUrl:
-        typeof candidate.ownerPhotoDataUrl === "string"
-          ? candidate.ownerPhotoDataUrl
-          : "",
+      ownerId: ownerId,
       status: candidate.status === "completed" ? "completed" : "pending",
     };
   }
@@ -214,6 +385,20 @@
   function cloneMilestones(milestones) {
     return milestones.map(function (milestone) {
       return Object.assign({}, milestone);
+    });
+  }
+
+  function clonePeople(people) {
+    return people.map(function (person) {
+      return Object.assign({}, person);
+    });
+  }
+
+  function ensureExamplePeople(people) {
+    createExamplePeople().forEach(function (samplePerson) {
+      if (!personExists(people, samplePerson.id)) {
+        people.push(Object.assign({}, samplePerson));
+      }
     });
   }
 
@@ -231,7 +416,7 @@
     };
   }
 
-  function normalizeTimeline(candidate, index) {
+  function normalizeTimeline(candidate, index, people) {
     if (!candidate || typeof candidate !== "object") {
       return null;
     }
@@ -245,10 +430,10 @@
     const milestones = Array.isArray(candidate.milestones)
       ? candidate.milestones
           .map(function (milestone, milestoneIndex) {
-            return normalizeMilestone(milestone, milestoneIndex);
+            return normalizeMilestone(milestone, milestoneIndex, people);
           })
           .filter(Boolean)
-      : fallbackMilestones;
+      : (ensureExamplePeople(people), fallbackMilestones);
 
     return {
       id:
@@ -270,7 +455,12 @@
     };
   }
 
-  function stateFromTimelines(timelines, activeTimelineId, sidebarCollapsed) {
+  function stateFromTimelines(
+    timelines,
+    activeTimelineId,
+    sidebarCollapsed,
+    people,
+  ) {
     const activeTimeline =
       timelines.find(function (timeline) {
         return timeline.id === activeTimelineId;
@@ -282,6 +472,7 @@
       includeTimes: activeTimeline.includeTimes,
       milestones: cloneMilestones(activeTimeline.milestones),
       name: activeTimeline.name,
+      people: clonePeople(people),
       showToday: activeTimeline.showToday,
       sidebarCollapsed: Boolean(sidebarCollapsed),
       timelines: timelines,
@@ -289,11 +480,13 @@
   }
 
   function loadSavedState() {
+    const fallbackPeople = createExamplePeople();
     const fallbackTimeline = createDefaultTimeline("Timeline 1");
     const fallback = stateFromTimelines(
       [fallbackTimeline],
       fallbackTimeline.id,
       false,
+      fallbackPeople,
     );
     const storage = getStorage();
 
@@ -308,10 +501,12 @@
         return fallback;
       }
 
+      const people = normalizePeople(saved.people);
+
       if (Array.isArray(saved.timelines)) {
         const timelines = saved.timelines
           .map(function (timeline, index) {
-            return normalizeTimeline(timeline, index);
+            return normalizeTimeline(timeline, index, people);
           })
           .filter(Boolean);
 
@@ -320,6 +515,7 @@
             timelines,
             saved.activeTimelineId,
             saved.sidebarCollapsed,
+            people,
           );
         }
       }
@@ -327,12 +523,14 @@
       const legacyTimeline = normalizeTimeline(
         Object.assign({ id: fallbackTimeline.id, name: "Timeline 1" }, saved),
         0,
+        people,
       );
 
       return stateFromTimelines(
         [legacyTimeline || fallbackTimeline],
         legacyTimeline ? legacyTimeline.id : fallbackTimeline.id,
         false,
+        people,
       );
     } catch (_error) {
       return fallback;
@@ -384,9 +582,10 @@
         STORAGE_KEY,
         JSON.stringify({
           activeTimelineId: state.activeTimelineId,
+          people: state.people,
           sidebarCollapsed: state.sidebarCollapsed,
           timelines: state.timelines,
-          version: 2,
+          version: 3,
         }),
       );
     } catch (_error) {
@@ -443,15 +642,28 @@
     }, 2166136261);
   }
 
-  function ownerLabel(milestone) {
-    return (
-      String(milestone.ownerName || "").trim() ||
-      String(milestone.ownerEmail || "").trim()
-    );
+  function ownerSource(value) {
+    return value && value.owner ? value.owner : value || {};
   }
 
-  function ownerInitials(milestone) {
-    const label = ownerLabel(milestone);
+  function ownerName(value) {
+    return String(ownerSource(value).name || "").trim();
+  }
+
+  function ownerEmail(value) {
+    return String(ownerSource(value).email || "").trim();
+  }
+
+  function ownerPhotoDataUrl(value) {
+    return String(ownerSource(value).photoDataUrl || "");
+  }
+
+  function ownerLabel(value) {
+    return ownerName(value) || ownerEmail(value);
+  }
+
+  function ownerInitials(value) {
+    const label = ownerLabel(value);
 
     if (!label) {
       return "";
@@ -469,7 +681,7 @@
     return initials.toUpperCase();
   }
 
-  function ownerAvatarColor(milestone) {
+  function ownerAvatarColor(value) {
     const colors = [
       "#0f766e",
       "#1d4ed8",
@@ -481,7 +693,7 @@
       "#0369a1",
     ];
 
-    return colors[hashString(ownerLabel(milestone)) % colors.length];
+    return colors[hashString(ownerLabel(value)) % colors.length];
   }
 
   function normalizeOwnerEmail(email) {
@@ -654,19 +866,21 @@
       : "";
   }
 
-  function ownerAvatarSrc(milestone) {
-    if (milestone.ownerPhotoDataUrl) {
-      return milestone.ownerPhotoDataUrl;
+  function ownerAvatarSrc(value) {
+    const photoDataUrl = ownerPhotoDataUrl(value);
+
+    if (photoDataUrl) {
+      return photoDataUrl;
     }
 
-    return gravatarUrl(milestone.ownerEmail);
+    return gravatarUrl(ownerEmail(value));
   }
 
-  function shouldRenderOwnerAvatar(milestone) {
+  function shouldRenderOwnerAvatar(value) {
     return Boolean(
-      milestone.ownerPhotoDataUrl ||
-        normalizeOwnerEmail(milestone.ownerEmail) ||
-        ownerLabel(milestone),
+      ownerPhotoDataUrl(value) ||
+        normalizeOwnerEmail(ownerEmail(value)) ||
+        ownerLabel(value),
     );
   }
 
@@ -1199,6 +1413,7 @@
       return [
         Object.assign({}, milestone, {
           date: date,
+          owner: getPersonById(milestone.ownerId),
           timestamp: timestamp,
           timelineState: getMilestoneState(
             milestone.status,
@@ -1220,6 +1435,14 @@
     }
 
     return "Upcoming";
+  }
+
+  function getPersonById(personId) {
+    return (
+      state.people.find(function (person) {
+        return person.id === personId;
+      }) || null
+    );
   }
 
   function renderTimelineList() {
@@ -1253,22 +1476,114 @@
       .join("");
   }
 
-  function renderOwnerAvatarPreview(milestone) {
-    const avatarSrc = ownerAvatarSrc(milestone);
-    const initials = ownerInitials(milestone) || "?";
-    const label = ownerLabel(milestone) || "No owner";
+  function renderPersonAvatar(person, extraClass) {
+    if (!person) {
+      return `
+        <span class="person-avatar person-avatar-empty ${extraClass || ""}">
+          +
+        </span>
+      `;
+    }
+
+    const avatarSrc = ownerAvatarSrc(person);
+    const initials = ownerInitials(person) || "?";
     const imageMarkup = avatarSrc
       ? `<img alt="" src="${escapeHtml(avatarSrc)}" />`
       : escapeHtml(initials);
 
     return `
       <span
-        class="owner-avatar-preview"
-        style="background: ${ownerAvatarColor(milestone)}"
-        title="${escapeHtml(label)}"
+        class="person-avatar ${extraClass || ""}"
+        style="background: ${ownerAvatarColor(person)}"
       >
         ${imageMarkup}
       </span>
+    `;
+  }
+
+  function renderOwnerPickerButton(milestone) {
+    const person = getPersonById(milestone.ownerId);
+    const label = person ? ownerLabel(person) : "Assign owner";
+
+    return `
+      <button
+        aria-expanded="${ownerMenuMilestoneId === milestone.id ? "true" : "false"}"
+        aria-label="${escapeHtml(label)}"
+        class="owner-picker-button"
+        data-action="toggle-owner-menu"
+        data-id="${escapeHtml(milestone.id)}"
+        title="${escapeHtml(label)}"
+        type="button"
+      >
+        ${renderPersonAvatar(person)}
+      </button>
+    `;
+  }
+
+  function renderOwnerMenuLayer() {
+    if (!ownerMenuMilestoneId) {
+      elements.ownerMenuLayer.innerHTML = "";
+      return;
+    }
+
+    const milestone = state.milestones.find(function (candidate) {
+      return candidate.id === ownerMenuMilestoneId;
+    });
+
+    if (!milestone) {
+      ownerMenuMilestoneId = "";
+      elements.ownerMenuLayer.innerHTML = "";
+      return;
+    }
+
+    const peopleMarkup = state.people
+      .map(function (person) {
+        const isActive = person.id === milestone.ownerId;
+
+        return `
+          <button
+            class="owner-menu-item${isActive ? " active" : ""}"
+            data-action="assign-owner"
+            data-id="${escapeHtml(milestone.id)}"
+            data-person-id="${escapeHtml(person.id)}"
+            type="button"
+          >
+            ${renderPersonAvatar(person)}
+            <span class="owner-menu-label">${escapeHtml(
+              ownerLabel(person) || "Unnamed person",
+            )}</span>
+          </button>
+        `;
+      })
+      .join("");
+
+    elements.ownerMenuLayer.innerHTML = `
+      <div
+        class="owner-menu-panel"
+        style="left: ${ownerMenuPosition.left}px; top: ${ownerMenuPosition.top}px;"
+      >
+        <button
+          class="owner-menu-item${milestone.ownerId ? "" : " active"}"
+          data-action="assign-owner"
+          data-id="${escapeHtml(milestone.id)}"
+          data-person-id=""
+          type="button"
+        >
+          ${renderPersonAvatar(null)}
+          <span class="owner-menu-label">Unassigned</span>
+        </button>
+        ${peopleMarkup}
+        <div class="owner-menu-divider"></div>
+        <button
+          class="owner-menu-item"
+          data-action="open-person-dialog"
+          data-id="${escapeHtml(milestone.id)}"
+          type="button"
+        >
+          ${renderPersonAvatar(null)}
+          <span class="owner-menu-label">Add person</span>
+        </button>
+      </div>
     `;
   }
 
@@ -1293,30 +1608,8 @@
             <input aria-label="${dateInputLabel}" data-field="at"
               data-id="${escapeHtml(milestone.id)}" type="${dateInputType}"
               value="${escapeHtml(dateInputValue)}" />
-            <div class="owner-fields">
-              <input aria-label="Owner name" data-field="ownerName"
-                data-id="${escapeHtml(milestone.id)}"
-                placeholder="Name"
-                value="${escapeHtml(milestone.ownerName)}" />
-              <input aria-label="Owner email for Gravatar" data-field="ownerEmail"
-                data-id="${escapeHtml(milestone.id)}"
-                placeholder="Email for Gravatar"
-                value="${escapeHtml(milestone.ownerEmail)}" />
-            </div>
-            <div class="avatar-cell">
-              ${renderOwnerAvatarPreview(milestone)}
-              <div class="avatar-actions">
-                <label class="upload-button">
-                  Upload
-                  <input class="file-input" data-field="ownerPhoto"
-                    data-id="${escapeHtml(milestone.id)}"
-                    type="file" accept="image/*" />
-                </label>
-                <button class="avatar-clear-button" data-action="clear-owner-photo"
-                  data-id="${escapeHtml(milestone.id)}" type="button">
-                  Clear
-                </button>
-              </div>
+            <div class="owner-cell">
+              ${renderOwnerPickerButton(milestone)}
             </div>
             <select aria-label="Milestone status" data-field="status"
               data-id="${escapeHtml(milestone.id)}">
@@ -1381,6 +1674,7 @@
     renderTimelineList();
     const asOfDate = renderTimelineAndCounts();
     renderRows(asOfDate);
+    renderOwnerMenuLayer();
   }
 
   function updateMilestone(id, field, value, redrawRows) {
@@ -1449,7 +1743,7 @@
     image.src = dataUrl;
   }
 
-  function handleOwnerPhotoUpload(id, file) {
+  function handlePersonPhotoUpload(file) {
     if (!file) {
       return;
     }
@@ -1472,7 +1766,8 @@
 
     reader.onload = function () {
       resizeAvatarDataUrl(String(reader.result || ""), function (dataUrl) {
-        updateMilestone(id, "ownerPhotoDataUrl", dataUrl, true);
+        pendingPersonPhotoDataUrl = dataUrl;
+        renderPersonPhotoPreview();
       });
     };
     reader.onerror = function () {
@@ -1481,6 +1776,91 @@
       }
     };
     reader.readAsDataURL(file);
+  }
+
+  function renderPersonPhotoPreview() {
+    const draftPerson = {
+      email: elements.personEmailInput.value,
+      name: elements.personNameInput.value,
+      photoDataUrl: pendingPersonPhotoDataUrl,
+    };
+
+    elements.personPhotoPreview.innerHTML = renderPersonAvatar(draftPerson);
+  }
+
+  function openPersonDialog(assignToMilestoneId) {
+    personDialogContext = {
+      assignToMilestoneId: assignToMilestoneId || "",
+    };
+    pendingPersonPhotoDataUrl = "";
+    elements.personNameInput.value = "";
+    elements.personEmailInput.value = "";
+    elements.personPhotoInput.value = "";
+    renderPersonPhotoPreview();
+
+    if (typeof elements.personDialog.showModal === "function") {
+      elements.personDialog.showModal();
+    } else {
+      elements.personDialog.setAttribute("open", "");
+    }
+
+    elements.personNameInput.focus();
+  }
+
+  function closePersonDialog() {
+    if (typeof elements.personDialog.close === "function") {
+      elements.personDialog.close();
+    } else {
+      elements.personDialog.removeAttribute("open");
+    }
+
+    personDialogContext = null;
+    pendingPersonPhotoDataUrl = "";
+  }
+
+  function savePersonFromDialog() {
+    const name = elements.personNameInput.value.trim();
+    const email = elements.personEmailInput.value.trim();
+
+    if (!name) {
+      elements.personNameInput.focus();
+      return;
+    }
+
+    const person = findOrCreatePerson(
+      state.people,
+      name,
+      email,
+      pendingPersonPhotoDataUrl,
+    );
+
+    if (!person.name && name) {
+      person.name = name;
+    }
+
+    if (!person.email && email) {
+      person.email = email;
+    }
+
+    if (!person.photoDataUrl && pendingPersonPhotoDataUrl) {
+      person.photoDataUrl = pendingPersonPhotoDataUrl;
+    }
+
+    if (personDialogContext && personDialogContext.assignToMilestoneId) {
+      state.milestones = state.milestones.map(function (milestone) {
+        if (milestone.id !== personDialogContext.assignToMilestoneId) {
+          return milestone;
+        }
+
+        return Object.assign({}, milestone, {
+          ownerId: person.id,
+        });
+      });
+    }
+
+    ownerMenuMilestoneId = "";
+    closePersonDialog();
+    saveAndRender();
   }
 
   function addMilestone() {
@@ -1502,9 +1882,7 @@
       id: makeId(),
       title: "New milestone",
       at: toDateValueForMode(nextDate, state.includeTimes),
-      ownerEmail: "",
-      ownerName: "",
-      ownerPhotoDataUrl: "",
+      ownerId: "",
       status: "pending",
     });
     saveAndRender();
@@ -1523,6 +1901,7 @@
 
   function resetSample() {
     const asOfDate = parseDateValue(state.asOf, state.includeTimes) || new Date();
+    ensureExamplePeople(state.people);
     state.milestones = createExampleMilestones(asOfDate, state.includeTimes);
     saveAndRender();
   }
@@ -1612,6 +1991,29 @@
     URL.revokeObjectURL(url);
   }
 
+  function positionOwnerMenu(button) {
+    const rect =
+      button && typeof button.getBoundingClientRect === "function"
+        ? button.getBoundingClientRect()
+        : { bottom: 72, left: 72 };
+    const viewportWidth =
+      typeof window.innerWidth === "number" ? window.innerWidth : CHART_WIDTH;
+    const viewportHeight =
+      typeof window.innerHeight === "number" ? window.innerHeight : 760;
+    const menuWidth = 280;
+    const menuHeight = Math.min(360, viewportHeight - 24);
+
+    ownerMenuPosition = {
+      left: clamp(rect.left, 12, Math.max(viewportWidth - menuWidth - 12, 12)),
+      top: clamp(rect.bottom + 6, 12, Math.max(viewportHeight - menuHeight - 12, 12)),
+    };
+  }
+
+  function assignOwner(milestoneId, personId) {
+    ownerMenuMilestoneId = "";
+    updateMilestone(milestoneId, "ownerId", personId, true);
+  }
+
   elements.asOfInput.addEventListener("input", function (event) {
     state.asOf = event.target.value;
     saveAndRender();
@@ -1665,12 +2067,7 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (
-      field === "title" ||
-      field === "at" ||
-      field === "ownerName" ||
-      field === "ownerEmail"
-    ) {
+    if (field === "title" || field === "at") {
       updateMilestone(id, field, event.target.value, false);
     }
   });
@@ -1679,25 +2076,23 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "ownerPhoto") {
-      handleOwnerPhotoUpload(id, event.target.files && event.target.files[0]);
-      return;
-    }
-
-    if (
-      field === "status" ||
-      field === "title" ||
-      field === "at" ||
-      field === "ownerName" ||
-      field === "ownerEmail"
-    ) {
+    if (field === "status" || field === "title" || field === "at") {
       updateMilestone(id, field, event.target.value, true);
     }
   });
 
   elements.milestoneRows.addEventListener("click", function (event) {
-    if (event.target.dataset.action === "clear-owner-photo") {
-      updateMilestone(event.target.dataset.id, "ownerPhotoDataUrl", "", true);
+    const ownerButton = event.target.closest(
+      '[data-action="toggle-owner-menu"]',
+    );
+
+    if (ownerButton) {
+      ownerMenuMilestoneId =
+        ownerMenuMilestoneId === ownerButton.dataset.id
+          ? ""
+          : ownerButton.dataset.id;
+      positionOwnerMenu(ownerButton);
+      renderOwnerMenuLayer();
       return;
     }
 
@@ -1708,6 +2103,64 @@
       saveAndRender();
     }
   });
+
+  elements.ownerMenuLayer.addEventListener("click", function (event) {
+    const actionTarget = event.target.closest("[data-action]");
+
+    if (!actionTarget) {
+      ownerMenuMilestoneId = "";
+      renderOwnerMenuLayer();
+      return;
+    }
+
+    if (actionTarget.dataset.action === "assign-owner") {
+      assignOwner(actionTarget.dataset.id, actionTarget.dataset.personId || "");
+      return;
+    }
+
+    if (actionTarget.dataset.action === "open-person-dialog") {
+      const milestoneId = actionTarget.dataset.id;
+
+      ownerMenuMilestoneId = "";
+      renderOwnerMenuLayer();
+      openPersonDialog(milestoneId);
+    }
+  });
+
+  elements.personForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    savePersonFromDialog();
+  });
+
+  elements.cancelPersonButton.addEventListener("click", closePersonDialog);
+
+  elements.clearPersonPhotoButton.addEventListener("click", function () {
+    pendingPersonPhotoDataUrl = "";
+    elements.personPhotoInput.value = "";
+    renderPersonPhotoPreview();
+  });
+
+  elements.personPhotoInput.addEventListener("change", function (event) {
+    handlePersonPhotoUpload(event.target.files && event.target.files[0]);
+  });
+
+  elements.personNameInput.addEventListener("input", renderPersonPhotoPreview);
+  elements.personEmailInput.addEventListener("input", renderPersonPhotoPreview);
+
+  if (typeof document.addEventListener === "function") {
+    document.addEventListener("click", function (event) {
+      if (
+        !ownerMenuMilestoneId ||
+        event.target.closest(".owner-menu-panel") ||
+        event.target.closest('[data-action="toggle-owner-menu"]')
+      ) {
+        return;
+      }
+
+      ownerMenuMilestoneId = "";
+      renderOwnerMenuLayer();
+    });
+  }
 
   render();
 })();
