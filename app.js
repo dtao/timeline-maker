@@ -16,6 +16,9 @@
   const LABEL_TOP_EXTENT = 76;
   const MIN_CHART_HEIGHT = 560;
   const STORAGE_KEY = "timeline-maker-state-v1";
+  const AVATAR_RADIUS = 15;
+  const AVATAR_SIZE = AVATAR_RADIUS * 2;
+  const AVATAR_RENDER_SIZE = 96;
 
   const elements = {
     addButton: document.querySelector("#addButton"),
@@ -124,30 +127,45 @@
         id: "brief-approved",
         title: "Brief approved",
         at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
+        ownerEmail: "",
+        ownerName: "Ari Chen",
+        ownerPhotoDataUrl: "",
         status: "completed",
       },
       {
         id: "data-freeze",
         title: "Data freeze",
         at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
+        ownerEmail: "",
+        ownerName: "Maya Patel",
+        ownerPhotoDataUrl: "",
         status: "completed",
       },
       {
         id: "design-review",
         title: "Design review",
         at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
+        ownerEmail: "",
+        ownerName: "Jon Bell",
+        ownerPhotoDataUrl: "",
         status: "pending",
       },
       {
         id: "beta-launch",
         title: "Beta launch",
         at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
+        ownerEmail: "",
+        ownerName: "Sam Rivera",
+        ownerPhotoDataUrl: "",
         status: "pending",
       },
       {
         id: "public-release",
         title: "Public release",
         at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
+        ownerEmail: "",
+        ownerName: "Nina Park",
+        ownerPhotoDataUrl: "",
         status: "pending",
       },
     ];
@@ -181,6 +199,14 @@
           : `saved-${index}-${makeId()}`,
       title: typeof candidate.title === "string" ? candidate.title : "",
       at: typeof candidate.at === "string" ? candidate.at : "",
+      ownerEmail:
+        typeof candidate.ownerEmail === "string" ? candidate.ownerEmail : "",
+      ownerName:
+        typeof candidate.ownerName === "string" ? candidate.ownerName : "",
+      ownerPhotoDataUrl:
+        typeof candidate.ownerPhotoDataUrl === "string"
+          ? candidate.ownerPhotoDataUrl
+          : "",
       status: candidate.status === "completed" ? "completed" : "pending",
     };
   }
@@ -408,6 +434,239 @@
         34,
       LABEL_MIN_WIDTH,
       LABEL_MAX_WIDTH,
+    );
+  }
+
+  function hashString(value) {
+    return String(value || "").split("").reduce(function (hash, character) {
+      return (hash * 31 + character.charCodeAt(0)) >>> 0;
+    }, 2166136261);
+  }
+
+  function ownerLabel(milestone) {
+    return (
+      String(milestone.ownerName || "").trim() ||
+      String(milestone.ownerEmail || "").trim()
+    );
+  }
+
+  function ownerInitials(milestone) {
+    const label = ownerLabel(milestone);
+
+    if (!label) {
+      return "";
+    }
+
+    const words = label
+      .replace(/@.*/, "")
+      .split(/[\s._-]+/)
+      .filter(Boolean);
+    const initials =
+      words.length > 1
+        ? `${words[0][0]}${words[1][0]}`
+        : label.slice(0, 2);
+
+    return initials.toUpperCase();
+  }
+
+  function ownerAvatarColor(milestone) {
+    const colors = [
+      "#0f766e",
+      "#1d4ed8",
+      "#7c3aed",
+      "#be123c",
+      "#b45309",
+      "#047857",
+      "#4338ca",
+      "#0369a1",
+    ];
+
+    return colors[hashString(ownerLabel(milestone)) % colors.length];
+  }
+
+  function normalizeOwnerEmail(email) {
+    return String(email || "").trim().toLowerCase();
+  }
+
+  function md5(input) {
+    function addUnsigned(left, right) {
+      const leftLow = left & 0xffff;
+      const leftHigh = left >>> 16;
+      const rightLow = right & 0xffff;
+      const rightHigh = right >>> 16;
+      const low = leftLow + rightLow;
+
+      return (((leftHigh + rightHigh + (low >>> 16)) << 16) | (low & 0xffff)) >>> 0;
+    }
+
+    function rotateLeft(value, bits) {
+      return (value << bits) | (value >>> (32 - bits));
+    }
+
+    function cmn(q, a, b, x, s, t) {
+      return addUnsigned(
+        rotateLeft(addUnsigned(addUnsigned(a, q), addUnsigned(x, t)), s),
+        b,
+      );
+    }
+
+    function ff(a, b, c, d, x, s, t) {
+      return cmn((b & c) | (~b & d), a, b, x, s, t);
+    }
+
+    function gg(a, b, c, d, x, s, t) {
+      return cmn((b & d) | (c & ~d), a, b, x, s, t);
+    }
+
+    function hh(a, b, c, d, x, s, t) {
+      return cmn(b ^ c ^ d, a, b, x, s, t);
+    }
+
+    function ii(a, b, c, d, x, s, t) {
+      return cmn(c ^ (b | ~d), a, b, x, s, t);
+    }
+
+    function utf8BinaryString(value) {
+      return unescape(encodeURIComponent(value));
+    }
+
+    function toWords(value) {
+      const wordArray = [];
+      let index;
+
+      for (index = 0; index < value.length * 8; index += 8) {
+        wordArray[index >> 5] |=
+          (value.charCodeAt(index / 8) & 0xff) << index % 32;
+      }
+
+      wordArray[index >> 5] |= 0x80 << index % 32;
+      wordArray[(((index + 64) >>> 9) << 4) + 14] = index;
+
+      return wordArray;
+    }
+
+    function wordToHex(value) {
+      let output = "";
+
+      for (let index = 0; index <= 3; index += 1) {
+        output += `0${((value >>> (index * 8)) & 0xff).toString(16)}`.slice(-2);
+      }
+
+      return output;
+    }
+
+    const x = toWords(utf8BinaryString(input));
+    let a = 0x67452301;
+    let b = 0xefcdab89;
+    let c = 0x98badcfe;
+    let d = 0x10325476;
+
+    for (let k = 0; k < x.length; k += 16) {
+      const aa = a;
+      const bb = b;
+      const cc = c;
+      const dd = d;
+
+      a = ff(a, b, c, d, x[k + 0], 7, 0xd76aa478);
+      d = ff(d, a, b, c, x[k + 1], 12, 0xe8c7b756);
+      c = ff(c, d, a, b, x[k + 2], 17, 0x242070db);
+      b = ff(b, c, d, a, x[k + 3], 22, 0xc1bdceee);
+      a = ff(a, b, c, d, x[k + 4], 7, 0xf57c0faf);
+      d = ff(d, a, b, c, x[k + 5], 12, 0x4787c62a);
+      c = ff(c, d, a, b, x[k + 6], 17, 0xa8304613);
+      b = ff(b, c, d, a, x[k + 7], 22, 0xfd469501);
+      a = ff(a, b, c, d, x[k + 8], 7, 0x698098d8);
+      d = ff(d, a, b, c, x[k + 9], 12, 0x8b44f7af);
+      c = ff(c, d, a, b, x[k + 10], 17, 0xffff5bb1);
+      b = ff(b, c, d, a, x[k + 11], 22, 0x895cd7be);
+      a = ff(a, b, c, d, x[k + 12], 7, 0x6b901122);
+      d = ff(d, a, b, c, x[k + 13], 12, 0xfd987193);
+      c = ff(c, d, a, b, x[k + 14], 17, 0xa679438e);
+      b = ff(b, c, d, a, x[k + 15], 22, 0x49b40821);
+
+      a = gg(a, b, c, d, x[k + 1], 5, 0xf61e2562);
+      d = gg(d, a, b, c, x[k + 6], 9, 0xc040b340);
+      c = gg(c, d, a, b, x[k + 11], 14, 0x265e5a51);
+      b = gg(b, c, d, a, x[k + 0], 20, 0xe9b6c7aa);
+      a = gg(a, b, c, d, x[k + 5], 5, 0xd62f105d);
+      d = gg(d, a, b, c, x[k + 10], 9, 0x02441453);
+      c = gg(c, d, a, b, x[k + 15], 14, 0xd8a1e681);
+      b = gg(b, c, d, a, x[k + 4], 20, 0xe7d3fbc8);
+      a = gg(a, b, c, d, x[k + 9], 5, 0x21e1cde6);
+      d = gg(d, a, b, c, x[k + 14], 9, 0xc33707d6);
+      c = gg(c, d, a, b, x[k + 3], 14, 0xf4d50d87);
+      b = gg(b, c, d, a, x[k + 8], 20, 0x455a14ed);
+      a = gg(a, b, c, d, x[k + 13], 5, 0xa9e3e905);
+      d = gg(d, a, b, c, x[k + 2], 9, 0xfcefa3f8);
+      c = gg(c, d, a, b, x[k + 7], 14, 0x676f02d9);
+      b = gg(b, c, d, a, x[k + 12], 20, 0x8d2a4c8a);
+
+      a = hh(a, b, c, d, x[k + 5], 4, 0xfffa3942);
+      d = hh(d, a, b, c, x[k + 8], 11, 0x8771f681);
+      c = hh(c, d, a, b, x[k + 11], 16, 0x6d9d6122);
+      b = hh(b, c, d, a, x[k + 14], 23, 0xfde5380c);
+      a = hh(a, b, c, d, x[k + 1], 4, 0xa4beea44);
+      d = hh(d, a, b, c, x[k + 4], 11, 0x4bdecfa9);
+      c = hh(c, d, a, b, x[k + 7], 16, 0xf6bb4b60);
+      b = hh(b, c, d, a, x[k + 10], 23, 0xbebfbc70);
+      a = hh(a, b, c, d, x[k + 13], 4, 0x289b7ec6);
+      d = hh(d, a, b, c, x[k + 0], 11, 0xeaa127fa);
+      c = hh(c, d, a, b, x[k + 3], 16, 0xd4ef3085);
+      b = hh(b, c, d, a, x[k + 6], 23, 0x04881d05);
+      a = hh(a, b, c, d, x[k + 9], 4, 0xd9d4d039);
+      d = hh(d, a, b, c, x[k + 12], 11, 0xe6db99e5);
+      c = hh(c, d, a, b, x[k + 15], 16, 0x1fa27cf8);
+      b = hh(b, c, d, a, x[k + 2], 23, 0xc4ac5665);
+
+      a = ii(a, b, c, d, x[k + 0], 6, 0xf4292244);
+      d = ii(d, a, b, c, x[k + 7], 10, 0x432aff97);
+      c = ii(c, d, a, b, x[k + 14], 15, 0xab9423a7);
+      b = ii(b, c, d, a, x[k + 5], 21, 0xfc93a039);
+      a = ii(a, b, c, d, x[k + 12], 6, 0x655b59c3);
+      d = ii(d, a, b, c, x[k + 3], 10, 0x8f0ccc92);
+      c = ii(c, d, a, b, x[k + 10], 15, 0xffeff47d);
+      b = ii(b, c, d, a, x[k + 1], 21, 0x85845dd1);
+      a = ii(a, b, c, d, x[k + 8], 6, 0x6fa87e4f);
+      d = ii(d, a, b, c, x[k + 15], 10, 0xfe2ce6e0);
+      c = ii(c, d, a, b, x[k + 6], 15, 0xa3014314);
+      b = ii(b, c, d, a, x[k + 13], 21, 0x4e0811a1);
+      a = ii(a, b, c, d, x[k + 4], 6, 0xf7537e82);
+      d = ii(d, a, b, c, x[k + 11], 10, 0xbd3af235);
+      c = ii(c, d, a, b, x[k + 2], 15, 0x2ad7d2bb);
+      b = ii(b, c, d, a, x[k + 9], 21, 0xeb86d391);
+
+      a = addUnsigned(a, aa);
+      b = addUnsigned(b, bb);
+      c = addUnsigned(c, cc);
+      d = addUnsigned(d, dd);
+    }
+
+    return `${wordToHex(a)}${wordToHex(b)}${wordToHex(c)}${wordToHex(d)}`;
+  }
+
+  function gravatarUrl(email) {
+    const normalizedEmail = normalizeOwnerEmail(email);
+
+    return normalizedEmail
+      ? `https://www.gravatar.com/avatar/${md5(
+          normalizedEmail,
+        )}?d=identicon&s=${AVATAR_RENDER_SIZE}`
+      : "";
+  }
+
+  function ownerAvatarSrc(milestone) {
+    if (milestone.ownerPhotoDataUrl) {
+      return milestone.ownerPhotoDataUrl;
+    }
+
+    return gravatarUrl(milestone.ownerEmail);
+  }
+
+  function shouldRenderOwnerAvatar(milestone) {
+    return Boolean(
+      milestone.ownerPhotoDataUrl ||
+        normalizeOwnerEmail(milestone.ownerEmail) ||
+        ownerLabel(milestone),
     );
   }
 
@@ -695,6 +954,74 @@
     return '<circle cx="0" cy="0" fill="#0f766e" r="4" />';
   }
 
+  function ownerAvatarPosition(point) {
+    const direction = point.labelX > CHART_WIDTH - 80 ? -1 : 1;
+
+    return {
+      x: point.labelX + direction * (LABEL_BADGE_RADIUS + AVATAR_RADIUS + 8),
+      y: point.y,
+    };
+  }
+
+  function renderSvgOwnerAvatar(layout, index) {
+    const point = layout.point;
+
+    if (!shouldRenderOwnerAvatar(point)) {
+      return "";
+    }
+
+    const avatar = ownerAvatarPosition(point);
+    const clipId = `avatarClip${index}`;
+    const avatarSrc = ownerAvatarSrc(point);
+    const initials = escapeHtml(ownerInitials(point));
+    const owner = escapeHtml(ownerLabel(point) || "Milestone owner");
+    const fill = ownerAvatarColor(point);
+    const imageMarkup = avatarSrc
+      ? `
+          <defs>
+            <clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">
+              <circle cx="${avatar.x}" cy="${avatar.y}" r="${AVATAR_RADIUS}" />
+            </clipPath>
+          </defs>
+          <image href="${escapeHtml(avatarSrc)}"
+            x="${avatar.x - AVATAR_RADIUS}" y="${avatar.y - AVATAR_RADIUS}"
+            width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"
+            preserveAspectRatio="xMidYMid slice"
+            clip-path="url(#${clipId})" />
+        `
+      : `
+          <circle cx="${avatar.x}" cy="${avatar.y}" fill="${fill}" r="${AVATAR_RADIUS}" />
+          <text fill="#ffffff" font-size="11" font-weight="900"
+            text-anchor="middle" x="${avatar.x}" y="${avatar.y + 4}">${initials}</text>
+        `;
+
+    return `
+      <g>
+        <title>${owner}</title>
+        ${imageMarkup}
+        <circle cx="${avatar.x}" cy="${avatar.y}" fill="none" r="${AVATAR_RADIUS}"
+          stroke="#ffffff" stroke-width="3" />
+        <circle cx="${avatar.x}" cy="${avatar.y}" fill="none" r="${AVATAR_RADIUS}"
+          stroke="#475569" stroke-width="1" />
+      </g>
+    `;
+  }
+
+  function renderSvgOwnerAvatarMask(layout) {
+    const point = layout.point;
+
+    if (!shouldRenderOwnerAvatar(point)) {
+      return "";
+    }
+
+    const avatar = ownerAvatarPosition(point);
+
+    return `
+      <circle cx="${avatar.x}" cy="${avatar.y}" fill="#ffffff"
+        r="${AVATAR_RADIUS + 4}" />
+    `;
+  }
+
   function renderChart(model, showMarker) {
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
@@ -806,6 +1133,7 @@
             r="${layout.anchorMaskRadius}" />
           <circle cx="${point.labelX}" cy="${point.y}" fill="#ffffff"
             r="${layout.markerMaskRadius}" />
+          ${renderSvgOwnerAvatarMask(layout)}
           <rect fill="#ffffff" height="48" rx="7"
             width="${point.labelWidth}" x="${point.labelLeft}"
             y="${layout.labelRectY}" />
@@ -813,7 +1141,7 @@
       })
       .join("");
     const pointMarkup = pointLayouts
-      .map(function (layout) {
+      .map(function (layout, index) {
         const point = layout.point;
 
         return `
@@ -825,6 +1153,7 @@
                 stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
               ${statusIcon(point.timelineState)}
             </g>
+            ${renderSvgOwnerAvatar(layout, index)}
             <rect fill="#ffffff" height="48" rx="7"
               stroke="#e2e8f0" stroke-width="1"
               width="${point.labelWidth}" x="${point.labelLeft}"
@@ -924,6 +1253,25 @@
       .join("");
   }
 
+  function renderOwnerAvatarPreview(milestone) {
+    const avatarSrc = ownerAvatarSrc(milestone);
+    const initials = ownerInitials(milestone) || "?";
+    const label = ownerLabel(milestone) || "No owner";
+    const imageMarkup = avatarSrc
+      ? `<img alt="" src="${escapeHtml(avatarSrc)}" />`
+      : escapeHtml(initials);
+
+    return `
+      <span
+        class="owner-avatar-preview"
+        style="background: ${ownerAvatarColor(milestone)}"
+        title="${escapeHtml(label)}"
+      >
+        ${imageMarkup}
+      </span>
+    `;
+  }
+
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
@@ -945,6 +1293,31 @@
             <input aria-label="${dateInputLabel}" data-field="at"
               data-id="${escapeHtml(milestone.id)}" type="${dateInputType}"
               value="${escapeHtml(dateInputValue)}" />
+            <div class="owner-fields">
+              <input aria-label="Owner name" data-field="ownerName"
+                data-id="${escapeHtml(milestone.id)}"
+                placeholder="Name"
+                value="${escapeHtml(milestone.ownerName)}" />
+              <input aria-label="Owner email for Gravatar" data-field="ownerEmail"
+                data-id="${escapeHtml(milestone.id)}"
+                placeholder="Email for Gravatar"
+                value="${escapeHtml(milestone.ownerEmail)}" />
+            </div>
+            <div class="avatar-cell">
+              ${renderOwnerAvatarPreview(milestone)}
+              <div class="avatar-actions">
+                <label class="upload-button">
+                  Upload
+                  <input class="file-input" data-field="ownerPhoto"
+                    data-id="${escapeHtml(milestone.id)}"
+                    type="file" accept="image/*" />
+                </label>
+                <button class="avatar-clear-button" data-action="clear-owner-photo"
+                  data-id="${escapeHtml(milestone.id)}" type="button">
+                  Clear
+                </button>
+              </div>
+            </div>
             <select aria-label="Milestone status" data-field="status"
               data-id="${escapeHtml(milestone.id)}">
               <option value="pending" ${
@@ -1029,6 +1402,87 @@
     }
   }
 
+  function resizeAvatarDataUrl(dataUrl, callback) {
+    if (typeof Image !== "function") {
+      callback(dataUrl);
+      return;
+    }
+
+    const image = new Image();
+
+    image.onload = function () {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext && canvas.getContext("2d");
+
+      if (!context) {
+        callback(dataUrl);
+        return;
+      }
+
+      const sourceSize = Math.min(image.width, image.height);
+      const sourceX = Math.max((image.width - sourceSize) / 2, 0);
+      const sourceY = Math.max((image.height - sourceSize) / 2, 0);
+
+      canvas.width = AVATAR_RENDER_SIZE;
+      canvas.height = AVATAR_RENDER_SIZE;
+      context.drawImage(
+        image,
+        sourceX,
+        sourceY,
+        sourceSize,
+        sourceSize,
+        0,
+        0,
+        AVATAR_RENDER_SIZE,
+        AVATAR_RENDER_SIZE,
+      );
+
+      try {
+        callback(canvas.toDataURL("image/jpeg", 0.84));
+      } catch (_error) {
+        callback(dataUrl);
+      }
+    };
+    image.onerror = function () {
+      callback(dataUrl);
+    };
+    image.src = dataUrl;
+  }
+
+  function handleOwnerPhotoUpload(id, file) {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type || !file.type.startsWith("image/")) {
+      if (typeof window.alert === "function") {
+        window.alert("Choose an image file for the owner avatar.");
+      }
+      return;
+    }
+
+    if (typeof FileReader !== "function") {
+      if (typeof window.alert === "function") {
+        window.alert("This browser cannot read local image files here.");
+      }
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = function () {
+      resizeAvatarDataUrl(String(reader.result || ""), function (dataUrl) {
+        updateMilestone(id, "ownerPhotoDataUrl", dataUrl, true);
+      });
+    };
+    reader.onerror = function () {
+      if (typeof window.alert === "function") {
+        window.alert("The image could not be loaded.");
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
   function addMilestone() {
     const asOfDate = parseDateValue(state.asOf, state.includeTimes);
     const parsedMilestones = getParsedMilestones(asOfDate);
@@ -1048,6 +1502,9 @@
       id: makeId(),
       title: "New milestone",
       at: toDateValueForMode(nextDate, state.includeTimes),
+      ownerEmail: "",
+      ownerName: "",
+      ownerPhotoDataUrl: "",
       status: "pending",
     });
     saveAndRender();
@@ -1208,7 +1665,12 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "title" || field === "at") {
+    if (
+      field === "title" ||
+      field === "at" ||
+      field === "ownerName" ||
+      field === "ownerEmail"
+    ) {
       updateMilestone(id, field, event.target.value, false);
     }
   });
@@ -1217,12 +1679,28 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "status" || field === "title" || field === "at") {
+    if (field === "ownerPhoto") {
+      handleOwnerPhotoUpload(id, event.target.files && event.target.files[0]);
+      return;
+    }
+
+    if (
+      field === "status" ||
+      field === "title" ||
+      field === "at" ||
+      field === "ownerName" ||
+      field === "ownerEmail"
+    ) {
       updateMilestone(id, field, event.target.value, true);
     }
   });
 
   elements.milestoneRows.addEventListener("click", function (event) {
+    if (event.target.dataset.action === "clear-owner-photo") {
+      updateMilestone(event.target.dataset.id, "ownerPhotoDataUrl", "", true);
+      return;
+    }
+
     if (event.target.dataset.action === "remove") {
       state.milestones = state.milestones.filter(function (milestone) {
         return milestone.id !== event.target.dataset.id;
