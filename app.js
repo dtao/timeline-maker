@@ -64,6 +64,7 @@
   let currentTimelineModel = null;
   let dragState = null;
   let editingTitleMilestoneId = "";
+  let timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
   let ownerMenuMilestoneId = "";
   let ownerMenuPosition = { left: 0, top: 0 };
   let personDialogContext = null;
@@ -1353,6 +1354,19 @@
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
     const tickLabelY = model.height - 28;
+    const timelineAddMarkup = timelineAddHover.visible
+      ? `
+          <g aria-label="Add milestone on ${escapeHtml(timelineAddHover.at)}"
+            class="timeline-add-control" data-action="create-milestone-at"
+            data-at="${escapeHtml(timelineAddHover.at)}" role="button"
+            tabindex="0" transform="translate(${timelineAddHover.x} ${model.axisY})">
+            <title>Add milestone on ${escapeHtml(timelineAddHover.at)}</title>
+            <circle fill="#ffffff" r="16" stroke="#0f766e" stroke-width="2" />
+            <text fill="#0f766e" font-size="22" font-weight="950"
+              text-anchor="middle" x="0" y="7">+</text>
+          </g>
+        `
+      : "";
     const weekendBandMarkup = model.weekendBands
       .map(function (band) {
         const x = getX(band.start, model.minTime, model.maxTime);
@@ -1526,7 +1540,12 @@
         <line stroke="#000000" stroke-linecap="round"
           stroke-width="3" x1="${CHART_LEFT}" x2="${CHART_WIDTH - CHART_RIGHT}"
           y1="${model.axisY}" y2="${model.axisY}" />
+        <rect class="timeline-axis-hit-target" data-action="axis-hover"
+          fill="transparent" height="44" pointer-events="all"
+          width="${CHART_WIDTH - CHART_LEFT - CHART_RIGHT}"
+          x="${CHART_LEFT}" y="${model.axisY - 22}" />
         ${markerMarkup}
+        ${timelineAddMarkup}
         ${emptyMarkup}
         ${connectorMarkup}
         ${pointMaskMarkup}
@@ -2068,6 +2087,23 @@
     saveAndRender();
   }
 
+  function addMilestoneAt(value) {
+    const date =
+      parseDateValue(value, state.includeTimes) ||
+      parseDateValue(state.asOf, state.includeTimes) ||
+      new Date();
+
+    state.milestones.push({
+      id: makeId(),
+      title: "New milestone",
+      at: toDateValueForMode(date, state.includeTimes),
+      ownerId: "",
+      status: "pending",
+    });
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
+    saveAndRender();
+  }
+
   function sortMilestones() {
     state.milestones.sort(function (a, b) {
       const aDate = parseDateValue(a.at, state.includeTimes);
@@ -2439,6 +2475,46 @@
     );
   }
 
+  function clearTimelineAddHover(redraw) {
+    if (!timelineAddHover.visible) {
+      return;
+    }
+
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
+
+    if (redraw) {
+      renderTimelineAndCounts();
+    }
+  }
+
+  function updateTimelineAddHover(clientX) {
+    if (!currentTimelineModel || dragState || editingTitleMilestoneId) {
+      clearTimelineAddHover(true);
+      return;
+    }
+
+    const x = clamp(
+      clientXToChartX(clientX, currentTimelineModel),
+      CHART_LEFT,
+      CHART_WIDTH - CHART_RIGHT,
+    );
+    const at = dateValueFromTimestamp(
+      chartXToTimestamp(x, currentTimelineModel),
+      state.includeTimes,
+    );
+
+    if (
+      timelineAddHover.visible &&
+      timelineAddHover.at === at &&
+      Math.abs(timelineAddHover.x - x) < 3
+    ) {
+      return;
+    }
+
+    timelineAddHover = { at: at, visible: true, x: x };
+    renderTimelineAndCounts();
+  }
+
   elements.asOfInput.addEventListener("input", function (event) {
     state.asOf = event.target.value;
     saveAndRender();
@@ -2490,6 +2566,16 @@
   elements.downloadPngButton.addEventListener("click", downloadPng);
 
   elements.timelineMount.addEventListener("click", function (event) {
+    const addTarget = closestMatch(
+      event.target,
+      '[data-action="create-milestone-at"]',
+    );
+
+    if (addTarget) {
+      addMilestoneAt(addTarget.dataset.at);
+      return;
+    }
+
     const titleTarget = closestMatch(event.target, '[data-action="edit-title"]');
 
     if (titleTarget) {
@@ -2505,6 +2591,25 @@
     if (ownerTarget) {
       toggleOwnerMenu(ownerTarget.dataset.id, ownerTarget);
     }
+  });
+
+  elements.timelineMount.addEventListener("mousemove", function (event) {
+    if (
+      closestMatch(event.target, '[data-action="create-milestone-at"]')
+    ) {
+      return;
+    }
+
+    if (closestMatch(event.target, '[data-action="axis-hover"]')) {
+      updateTimelineAddHover(event.clientX);
+      return;
+    }
+
+    clearTimelineAddHover(true);
+  });
+
+  elements.timelineMount.addEventListener("mouseleave", function () {
+    clearTimelineAddHover(true);
   });
 
   elements.timelineMount.addEventListener("pointerdown", function (event) {

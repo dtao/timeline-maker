@@ -400,6 +400,18 @@ h1 {
   cursor: pointer;
 }
 
+.timeline-axis-hit-target {
+  cursor: copy;
+}
+
+.timeline-add-control {
+  cursor: pointer;
+}
+
+.timeline-add-control text {
+  pointer-events: none;
+}
+
 .editor-panel {
   overflow-x: auto;
 }
