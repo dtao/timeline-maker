@@ -14,4 +14,4 @@
       make significantly smaller and more subtle
 - [x] Add ability to delete milestone from timeline view (small red X or trash
       icon, which should only appear on hover)
-- [ ] Bug: PNG download only captures small cropped portion of timeline visual
+- [x] Bug: PNG download only captures small cropped portion of timeline visual

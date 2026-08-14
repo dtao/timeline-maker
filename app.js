@@ -1684,6 +1684,7 @@
 
     return `
       <svg aria-label="Timeline visual" class="timeline-svg" role="img"
+        height="${model.height}" width="${model.width}"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 ${model.width} ${model.height}">
         <rect fill="#ffffff" height="${model.height}" rx="8"
@@ -2686,6 +2687,7 @@
       return;
     }
 
+    const exportModel = currentTimelineModel;
     const image = new Image();
     const svgBlob = new Blob([svgMarkupForPng()], {
       type: "image/svg+xml;charset=utf-8",
@@ -2706,12 +2708,12 @@
         return;
       }
 
-      canvas.width = currentTimelineModel.width * scale;
-      canvas.height = currentTimelineModel.height * scale;
+      canvas.width = exportModel.width * scale;
+      canvas.height = exportModel.height * scale;
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.scale(scale, scale);
-      context.drawImage(image, 0, 0);
+      context.drawImage(image, 0, 0, exportModel.width, exportModel.height);
 
       if (typeof canvas.toBlob === "function") {
         canvas.toBlob(function (blob) {
