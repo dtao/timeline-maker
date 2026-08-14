@@ -1549,8 +1549,10 @@
         const labelOpacity = point.timelineState === "completed" ? 0.56 : 1;
         const title = escapeHtml(point.titleLabel);
         const dateLabel = escapeHtml(point.dateLabel);
-        const editIconX = point.labelRight - 18;
-        const editIconY = labelRectY + 16;
+        const editIconX = point.labelRight - 34;
+        const editIconY = labelRectY + 15;
+        const deleteIconX = point.labelRight - 14;
+        const deleteIconY = labelRectY + 15;
         const riskDotX = point.labelX + 19;
         const riskDotY = point.y - 18;
         const risk = riskSummary(point);
@@ -1573,6 +1575,8 @@
           connectorY: connectorY,
           dateLabel: dateLabel,
           dateY: dateY,
+          deleteIconX: deleteIconX,
+          deleteIconY: deleteIconY,
           editIconX: editIconX,
           editIconY: editIconY,
           labelOpacity: labelOpacity,
@@ -1656,11 +1660,20 @@
               role="button" tabindex="0"
               transform="translate(${layout.editIconX} ${layout.editIconY})">
               <title>Edit ${layout.title}</title>
-              <circle fill="#ffffff" r="10" stroke="#cbd5e1" stroke-width="1.5" />
+              <circle fill="#ffffff" r="9" stroke="#cbd5e1" stroke-width="1.5" />
               <path d="M -4 4 L -2 0 L 4 -6 L 7 -3 L 1 3 Z"
                 fill="#64748b" />
               <path d="M -4 4 L 1 3" fill="none" stroke="#334155"
                 stroke-linecap="round" stroke-width="1.2" />
+            </g>
+            <g aria-label="Delete ${layout.title}" class="timeline-delete-action"
+              data-action="delete-milestone" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0"
+              transform="translate(${layout.deleteIconX} ${layout.deleteIconY})">
+              <title>Delete ${layout.title}</title>
+              <circle fill="#ffffff" r="9" stroke="#fecaca" stroke-width="1.5" />
+              <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" fill="none"
+                stroke="#b91c1c" stroke-linecap="round" stroke-width="1.8" />
             </g>
             <text fill="#64748b" font-size="15" font-weight="600"
               text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
@@ -2287,6 +2300,23 @@
     } else if (field !== "details") {
       renderTimelineAndCounts();
     }
+  }
+
+  function removeMilestone(milestoneId) {
+    if (milestoneDialogMilestoneId === milestoneId) {
+      closeMilestoneDialog();
+    }
+
+    if (editingTitleMilestoneId === milestoneId) {
+      closeTitleEditor(false);
+    }
+
+    state.milestones = state.milestones.filter(function (milestone) {
+      return milestone.id !== milestoneId;
+    });
+    ownerMenuMilestoneId = "";
+    statusMenuMilestoneId = "";
+    saveAndRender();
   }
 
   function resizeAvatarDataUrl(dataUrl, callback) {
@@ -3236,6 +3266,16 @@
       return;
     }
 
+    const deleteTarget = closestMatch(
+      event.target,
+      '[data-action="delete-milestone"]',
+    );
+
+    if (deleteTarget) {
+      removeMilestone(deleteTarget.dataset.id);
+      return;
+    }
+
     const editTarget = closestMatch(
       event.target,
       '[data-action="open-milestone-dialog"]',
@@ -3366,14 +3406,7 @@
     }
 
     if (event.target.dataset.action === "remove") {
-      if (milestoneDialogMilestoneId === event.target.dataset.id) {
-        closeMilestoneDialog();
-      }
-
-      state.milestones = state.milestones.filter(function (milestone) {
-        return milestone.id !== event.target.dataset.id;
-      });
-      saveAndRender();
+      removeMilestone(event.target.dataset.id);
     }
   });
 

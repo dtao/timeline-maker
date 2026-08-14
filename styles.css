@@ -406,7 +406,8 @@ h1 {
   cursor: grabbing;
 }
 
-.timeline-edit-action {
+.timeline-edit-action,
+.timeline-delete-action {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -414,12 +415,15 @@ h1 {
 }
 
 .timeline-edit-action path,
-.timeline-edit-action text {
+.timeline-edit-action text,
+.timeline-delete-action path {
   pointer-events: none;
 }
 
 .timeline-point:hover .timeline-edit-action,
-.timeline-edit-action:focus {
+.timeline-point:hover .timeline-delete-action,
+.timeline-edit-action:focus,
+.timeline-delete-action:focus {
   opacity: 1;
   pointer-events: auto;
 }

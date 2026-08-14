@@ -12,6 +12,6 @@
       (half green/green)
 - [x] Icon to add milestone directly from timeline view is too large and bulky;
       make significantly smaller and more subtle
-- [ ] Add ability to delete milestone from timeline view (small red X or trash
+- [x] Add ability to delete milestone from timeline view (small red X or trash
       icon, which should only appear on hover)
 - [ ] Bug: PNG download only captures small cropped portion of timeline visual
