@@ -10,7 +10,7 @@
 - [x] Show small dot next to milestone marker to indicate (a) if there are any
       associate risks (orange), (b) if some/all associated risks are mitigated
       (half green/green)
-- [ ] Icon to add milestone directly from timeline view is too large and bulky;
+- [x] Icon to add milestone directly from timeline view is too large and bulky;
       make significantly smaller and more subtle
 - [ ] Add ability to delete milestone from timeline view (small red X or trash
       icon, which should only appear on hover)

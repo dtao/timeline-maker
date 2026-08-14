@@ -434,10 +434,15 @@ h1 {
 
 .timeline-add-control {
   cursor: pointer;
+  opacity: 0.86;
 }
 
-.timeline-add-control text {
+.timeline-add-control path {
   pointer-events: none;
+}
+
+.timeline-add-control:hover {
+  opacity: 1;
 }
 
 .editor-panel {

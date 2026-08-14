@@ -1473,9 +1473,9 @@
             data-at="${escapeHtml(timelineAddHover.at)}" role="button"
             tabindex="0" transform="translate(${timelineAddHover.x} ${model.axisY})">
             <title>Add milestone on ${escapeHtml(timelineAddHover.at)}</title>
-            <circle fill="#ffffff" r="16" stroke="#0f766e" stroke-width="2" />
-            <text fill="#0f766e" font-size="22" font-weight="950"
-              text-anchor="middle" x="0" y="7">+</text>
+            <circle fill="#ffffff" r="10.5" stroke="#cbd5e1" stroke-width="1.5" />
+            <path d="M -4.5 0 H 4.5 M 0 -4.5 V 4.5" fill="none"
+              stroke="#0f766e" stroke-linecap="round" stroke-width="1.8" />
           </g>
         `
       : "";
