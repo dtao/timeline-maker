@@ -1549,10 +1549,13 @@
         const labelOpacity = point.timelineState === "completed" ? 0.56 : 1;
         const title = escapeHtml(point.titleLabel);
         const dateLabel = escapeHtml(point.dateLabel);
-        const editIconX = point.labelRight - 34;
-        const editIconY = labelRectY + 15;
-        const deleteIconX = point.labelRight - 14;
-        const deleteIconY = labelRectY + 15;
+        const actionIconX = point.labelRight + 13;
+        const actionBridgeX = point.labelRight;
+        const actionBridgeWidth = 24;
+        const editIconX = actionIconX;
+        const editIconY = labelRectY + 13;
+        const deleteIconX = actionIconX;
+        const deleteIconY = labelRectY + 35;
         const riskDotX = point.labelX + 19;
         const riskDotY = point.y - 18;
         const risk = riskSummary(point);
@@ -1573,6 +1576,8 @@
           connectorColor: connectorColor,
           connectorWidth: connectorWidth,
           connectorY: connectorY,
+          actionBridgeWidth: actionBridgeWidth,
+          actionBridgeX: actionBridgeX,
           dateLabel: dateLabel,
           dateY: dateY,
           deleteIconX: deleteIconX,
@@ -1629,32 +1634,39 @@
         const point = layout.point;
 
         return `
-          <g class="timeline-point" opacity="${layout.labelOpacity}">
-            <circle class="timeline-date-handle" cx="${point.x}" cy="${model.axisY}"
-              data-action="drag-date" data-id="${escapeHtml(point.id)}"
-              fill="#ffffff" r="9" stroke="${layout.anchorColor}"
-              stroke-width="${layout.anchorWidth}" />
-            <g aria-label="Change status or drag to reschedule ${layout.title}"
-              class="timeline-marker-action" data-action="drag-date"
-              data-id="${escapeHtml(point.id)}" role="button" tabindex="0"
-              transform="translate(${point.labelX} ${point.y})">
-              <circle fill="${layout.style.fill}" opacity="${layout.style.opacity}" r="21"
-                stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
-              ${statusIcon(point.timelineState)}
-              <g transform="translate(19 -18)">
-                ${renderTimelineRiskIndicator(layout.risk)}
+          <g class="timeline-point">
+            <g opacity="${layout.labelOpacity}">
+              <circle class="timeline-date-handle" cx="${point.x}" cy="${model.axisY}"
+                data-action="drag-date" data-id="${escapeHtml(point.id)}"
+                fill="#ffffff" r="9" stroke="${layout.anchorColor}"
+                stroke-width="${layout.anchorWidth}" />
+              <g aria-label="Change status or drag to reschedule ${layout.title}"
+                class="timeline-marker-action" data-action="drag-date"
+                data-id="${escapeHtml(point.id)}" role="button" tabindex="0"
+                transform="translate(${point.labelX} ${point.y})">
+                <circle fill="${layout.style.fill}" opacity="${layout.style.opacity}" r="21"
+                  stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
+                ${statusIcon(point.timelineState)}
+                <g transform="translate(19 -18)">
+                  ${renderTimelineRiskIndicator(layout.risk)}
+                </g>
               </g>
+              <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
+                data-action="edit-title" data-id="${escapeHtml(point.id)}"
+                role="button" tabindex="0">
+                <rect fill="#ffffff" height="48" rx="7"
+                  stroke="#e2e8f0" stroke-width="1"
+                  width="${point.labelWidth}" x="${point.labelLeft}"
+                  y="${layout.labelRectY}" />
+                <text fill="#0f172a" font-size="18" font-weight="800"
+                  text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
+              </g>
+              <text fill="#64748b" font-size="15" font-weight="600"
+                text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
             </g>
-            <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
-              data-action="edit-title" data-id="${escapeHtml(point.id)}"
-              role="button" tabindex="0">
-              <rect fill="#ffffff" height="48" rx="7"
-                stroke="#e2e8f0" stroke-width="1"
-                width="${point.labelWidth}" x="${point.labelLeft}"
-                y="${layout.labelRectY}" />
-              <text fill="#0f172a" font-size="18" font-weight="800"
-                text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
-            </g>
+            <rect class="timeline-action-hover-bridge" fill="transparent"
+              height="48" pointer-events="all" width="${layout.actionBridgeWidth}"
+              x="${layout.actionBridgeX}" y="${layout.labelRectY}" />
             <g aria-label="Edit ${layout.title}" class="timeline-edit-action"
               data-action="open-milestone-dialog" data-id="${escapeHtml(point.id)}"
               role="button" tabindex="0"
@@ -1675,8 +1687,6 @@
               <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" fill="none"
                 stroke="#b91c1c" stroke-linecap="round" stroke-width="1.8" />
             </g>
-            <text fill="#64748b" font-size="15" font-weight="600"
-              text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
           </g>
         `;
       })
