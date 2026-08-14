@@ -27,6 +27,7 @@
     dateColumnLabel: document.querySelector("#dateColumnLabel"),
     deleteTimelineButton: document.querySelector("#deleteTimelineButton"),
     downloadButton: document.querySelector("#downloadButton"),
+    downloadPngButton: document.querySelector("#downloadPngButton"),
     duplicateTimelineButton: document.querySelector("#duplicateTimelineButton"),
     includeTimesInput: document.querySelector("#includeTimesInput"),
     milestoneRows: document.querySelector("#milestoneRows"),
@@ -2170,6 +2171,93 @@
     URL.revokeObjectURL(url);
   }
 
+  function svgMarkupForPng() {
+    return currentSvgMarkup.replace(
+      /<image\s+href="https?:\/\/[^"]+"[\s\S]*?\/>/g,
+      "",
+    );
+  }
+
+  function saveBlobAsDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadPng() {
+    if (!currentTimelineModel || typeof Image !== "function") {
+      return;
+    }
+
+    const image = new Image();
+    const svgBlob = new Blob([svgMarkupForPng()], {
+      type: "image/svg+xml;charset=utf-8",
+    });
+    const url = URL.createObjectURL(svgBlob);
+    const scale = 2;
+
+    image.onload = function () {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext && canvas.getContext("2d");
+
+      URL.revokeObjectURL(url);
+
+      if (!context) {
+        if (typeof window.alert === "function") {
+          window.alert("This browser cannot render a PNG export.");
+        }
+        return;
+      }
+
+      canvas.width = currentTimelineModel.width * scale;
+      canvas.height = currentTimelineModel.height * scale;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.scale(scale, scale);
+      context.drawImage(image, 0, 0);
+
+      if (typeof canvas.toBlob === "function") {
+        canvas.toBlob(function (blob) {
+          if (blob) {
+            saveBlobAsDownload(blob, "timeline.png");
+          }
+        }, "image/png");
+        return;
+      }
+
+      try {
+        const dataUrl = canvas.toDataURL("image/png");
+        const link = document.createElement("a");
+
+        link.href = dataUrl;
+        link.download = "timeline.png";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } catch (_error) {
+        if (typeof window.alert === "function") {
+          window.alert("The PNG export could not be created.");
+        }
+      }
+    };
+
+    image.onerror = function () {
+      URL.revokeObjectURL(url);
+
+      if (typeof window.alert === "function") {
+        window.alert("The PNG export could not be created.");
+      }
+    };
+
+    image.src = url;
+  }
+
   function positionFloatingMenu(target, width, height) {
     const rect =
       target && typeof target.getBoundingClientRect === "function"
@@ -2399,6 +2487,7 @@
   elements.sortButton.addEventListener("click", sortMilestones);
   elements.resetButton.addEventListener("click", resetSample);
   elements.downloadButton.addEventListener("click", downloadSvg);
+  elements.downloadPngButton.addEventListener("click", downloadPng);
 
   elements.timelineMount.addEventListener("click", function (event) {
     const titleTarget = closestMatch(event.target, '[data-action="edit-title"]');

@@ -16,7 +16,7 @@ entries, with optional time support.
 - Completed milestones shown with reduced opacity and a green check signal
 - Overdue pending milestones shown with an amber warning signal and thicker border
 - Close milestones stack into non-overlapping label rows with elbow connectors
-- SVG timeline download
+- SVG and PNG timeline download
 - Browser-local persistence across page refreshes
 
 Uploaded avatar images are resized and saved once per person in browser-local
