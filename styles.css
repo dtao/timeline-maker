@@ -406,24 +406,22 @@ h1 {
   cursor: grabbing;
 }
 
-.timeline-owner-action {
+.timeline-edit-action {
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
 }
 
-.timeline-details-action {
-  cursor: pointer;
-}
-
-.timeline-details-action text {
+.timeline-edit-action path,
+.timeline-edit-action text {
   pointer-events: none;
 }
 
-.timeline-risk-action {
-  cursor: pointer;
-}
-
-.timeline-risk-action text {
-  pointer-events: none;
+.timeline-point:hover .timeline-edit-action,
+.timeline-edit-action:focus {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .timeline-axis-hit-target {
@@ -444,9 +442,9 @@ h1 {
 
 .editor-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 1.35fr) 180px 72px 140px 118px 210px;
+  grid-template-columns: minmax(240px, 1.35fr) 180px 72px 140px 118px 116px;
   gap: 10px;
-  min-width: 1040px;
+  min-width: 960px;
   align-items: center;
 }
 
@@ -465,7 +463,7 @@ h1 {
 }
 
 .editor-footer {
-  min-width: 1040px;
+  min-width: 960px;
   border-top: 1px solid #eef2f7;
   padding: 12px 14px 14px;
 }
@@ -544,7 +542,7 @@ h1 {
 
 .row-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 40px minmax(0, 1fr);
   gap: 6px;
 }
 
@@ -554,33 +552,17 @@ h1 {
   padding: 0 8px;
 }
 
-.details-toggle-button {
-  color: var(--teal);
+.edit-milestone-button svg {
+  width: 18px;
+  height: 18px;
+  fill: #64748b;
+  stroke: #334155;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
-.risks-toggle-button {
-  color: #475569;
-}
-
-.risks-toggle-open {
-  border-color: #f59e0b;
-  color: #7c2d12;
-}
-
-.risks-toggle-resolved {
-  border-color: #86efac;
-  color: #166534;
-}
-
-.milestone-details-panel {
-  padding: 0 14px 14px;
-}
-
-.milestone-risks-panel {
-  padding: 0 14px 14px;
-}
-
-.details-field {
+.milestone-field {
   display: grid;
   gap: 7px;
   color: #475569;
@@ -589,7 +571,9 @@ h1 {
   text-transform: uppercase;
 }
 
-.details-field textarea {
+.milestone-field input,
+.milestone-field select,
+.milestone-field textarea {
   color: var(--ink);
   font-size: 0.92rem;
   font-weight: 600;
@@ -598,9 +582,7 @@ h1 {
 
 .title-edit-layer,
 .owner-menu-layer,
-.status-menu-layer,
-.details-popover-layer,
-.risk-popover-layer {
+.status-menu-layer {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -717,112 +699,6 @@ h1 {
   color: #134e4a;
 }
 
-.details-popover-panel {
-  position: fixed;
-  display: grid;
-  width: min(340px, calc(100vw - 24px));
-  gap: 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 20px 46px rgb(15 23 42 / 0.18);
-  padding: 12px;
-  pointer-events: auto;
-}
-
-.details-popover-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.details-popover-title {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.details-popover-title strong {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 0.98rem;
-  font-weight: 950;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.details-popover-title span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.details-popover-close {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  min-height: 34px;
-  font-size: 1.15rem;
-}
-
-.details-popover-textarea {
-  min-height: 120px;
-  font-size: 0.92rem;
-  font-weight: 600;
-}
-
-.risk-popover-panel {
-  position: fixed;
-  display: grid;
-  width: min(440px, calc(100vw - 24px));
-  max-height: min(560px, calc(100vh - 24px));
-  overflow-y: auto;
-  gap: 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 20px 46px rgb(15 23 42 / 0.18);
-  padding: 12px;
-  pointer-events: auto;
-}
-
-.risk-popover-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.risk-popover-title {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.risk-popover-title strong {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 0.98rem;
-  font-weight: 950;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.risk-popover-title span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.risk-popover-close {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  min-height: 34px;
-  font-size: 1.15rem;
-}
-
 .risk-controls {
   display: grid;
   gap: 10px;
@@ -901,14 +777,6 @@ h1 {
   align-items: center;
 }
 
-.risk-popover-panel .risk-item-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.risk-popover-panel .risk-item-grid input {
-  grid-column: 1 / -1;
-}
-
 .risk-item-grid input,
 .risk-item-grid select,
 .risk-item-grid button {
@@ -945,6 +813,52 @@ h1 {
   color: var(--ink);
   font-size: 0.86rem;
   font-weight: 700;
+}
+
+.milestone-dialog {
+  width: min(720px, calc(100vw - 28px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 28px 70px rgb(15 23 42 / 0.24);
+  padding: 0;
+}
+
+.milestone-dialog::backdrop {
+  background: rgb(15 23 42 / 0.28);
+}
+
+.milestone-form {
+  display: grid;
+  gap: 16px;
+  max-height: min(760px, calc(100vh - 36px));
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.milestone-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.milestone-dialog-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.milestone-dialog-risks {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.milestone-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .upload-button {
@@ -1129,8 +1043,7 @@ h1 {
   }
 
   .risk-controls-header,
-  .risk-item-grid,
-  .risk-popover-panel .risk-item-grid {
+  .risk-item-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1138,7 +1051,4 @@ h1 {
     display: grid;
   }
 
-  .risk-popover-panel .risk-item-grid input {
-    grid-column: auto;
-  }
 }

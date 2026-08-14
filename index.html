@@ -121,8 +121,45 @@
     <div id="titleEditLayer" class="title-edit-layer"></div>
     <div id="ownerMenuLayer" class="owner-menu-layer"></div>
     <div id="statusMenuLayer" class="status-menu-layer"></div>
-    <div id="detailsPopoverLayer" class="details-popover-layer"></div>
-    <div id="riskPopoverLayer" class="risk-popover-layer"></div>
+
+    <dialog id="milestoneDialog" class="milestone-dialog">
+      <form id="milestoneForm" class="milestone-form" method="dialog">
+        <div class="milestone-dialog-header">
+          <h2 id="milestoneDialogTitle">Edit milestone</h2>
+          <button
+            id="cancelMilestoneButton"
+            class="icon-button"
+            type="button"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <label class="milestone-field">
+          <span>Title</span>
+          <input id="milestoneTitleInput" />
+        </label>
+
+        <label class="milestone-field">
+          <span>Owner</span>
+          <select id="milestoneOwnerSelect"></select>
+        </label>
+
+        <label class="milestone-field">
+          <span>Details</span>
+          <textarea id="milestoneDetailsInput" placeholder="Add details"></textarea>
+        </label>
+
+        <section class="milestone-dialog-risks" aria-label="Milestone risks">
+          <div id="milestoneDialogRisks"></div>
+        </section>
+
+        <div class="milestone-dialog-actions">
+          <button id="doneMilestoneButton" type="button">Done</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="personDialog" class="person-dialog">
       <form id="personForm" class="person-form" method="dialog">

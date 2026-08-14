@@ -27,12 +27,20 @@
     completedCount: document.querySelector("#completedCount"),
     dateColumnLabel: document.querySelector("#dateColumnLabel"),
     deleteTimelineButton: document.querySelector("#deleteTimelineButton"),
-    detailsPopoverLayer: document.querySelector("#detailsPopoverLayer"),
     downloadButton: document.querySelector("#downloadButton"),
     downloadPngButton: document.querySelector("#downloadPngButton"),
     duplicateTimelineButton: document.querySelector("#duplicateTimelineButton"),
     includeTimesInput: document.querySelector("#includeTimesInput"),
+    cancelMilestoneButton: document.querySelector("#cancelMilestoneButton"),
+    doneMilestoneButton: document.querySelector("#doneMilestoneButton"),
+    milestoneDetailsInput: document.querySelector("#milestoneDetailsInput"),
+    milestoneDialog: document.querySelector("#milestoneDialog"),
+    milestoneDialogRisks: document.querySelector("#milestoneDialogRisks"),
+    milestoneDialogTitle: document.querySelector("#milestoneDialogTitle"),
+    milestoneForm: document.querySelector("#milestoneForm"),
+    milestoneOwnerSelect: document.querySelector("#milestoneOwnerSelect"),
     milestoneRows: document.querySelector("#milestoneRows"),
+    milestoneTitleInput: document.querySelector("#milestoneTitleInput"),
     newTimelineButton: document.querySelector("#newTimelineButton"),
     nowButton: document.querySelector("#nowButton"),
     cancelPersonButton: document.querySelector("#cancelPersonButton"),
@@ -46,7 +54,6 @@
     personPhotoInput: document.querySelector("#personPhotoInput"),
     personPhotoPreview: document.querySelector("#personPhotoPreview"),
     resetButton: document.querySelector("#resetButton"),
-    riskPopoverLayer: document.querySelector("#riskPopoverLayer"),
     showTodayInput: document.querySelector("#showTodayInput"),
     sortButton: document.querySelector("#sortButton"),
     statusMenuLayer: document.querySelector("#statusMenuLayer"),
@@ -67,18 +74,13 @@
   let currentTimelineModel = null;
   let dragState = null;
   let editingTitleMilestoneId = "";
-  let detailsPopoverMilestoneId = "";
-  let detailsPopoverPosition = { left: 0, top: 0 };
-  let expandedDetailsMilestoneId = "";
   let expandedRiskHistoryKey = "";
-  let expandedRisksMilestoneId = "";
+  let milestoneDialogMilestoneId = "";
   let timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
   let ownerMenuMilestoneId = "";
   let ownerMenuPosition = { left: 0, top: 0 };
   let personDialogContext = null;
   let pendingPersonPhotoDataUrl = "";
-  let riskPopoverMilestoneId = "";
-  let riskPopoverPosition = { left: 0, top: 0 };
   let statusMenuMilestoneId = "";
   let statusMenuPosition = { left: 0, top: 0 };
 
@@ -1434,132 +1436,6 @@
     return '<circle cx="0" cy="0" fill="#0f766e" r="4" />';
   }
 
-  function ownerAvatarPosition(point) {
-    const direction = point.labelX > CHART_WIDTH - 80 ? -1 : 1;
-
-    return {
-      x: point.labelX + direction * (LABEL_BADGE_RADIUS + AVATAR_RADIUS + 8),
-      y: point.y,
-    };
-  }
-
-  function riskIconPosition(point) {
-    const ownerDirection = point.labelX > CHART_WIDTH - 80 ? -1 : 1;
-
-    return {
-      x: point.labelX - ownerDirection * (LABEL_BADGE_RADIUS + 14 + 8),
-      y: point.y,
-    };
-  }
-
-  function renderSvgOwnerAvatar(layout, index) {
-    const point = layout.point;
-    const hasOwner = shouldRenderOwnerAvatar(point);
-    const avatar = ownerAvatarPosition(point);
-    const clipId = `avatarClip${index}`;
-    const avatarSrc = ownerAvatarSrc(point);
-    const initials = escapeHtml(ownerInitials(point));
-    const owner = escapeHtml(ownerLabel(point) || "Assign owner");
-    const fill = ownerAvatarColor(point);
-    let avatarMarkup;
-
-    if (avatarSrc) {
-      avatarMarkup = `
-          <defs>
-            <clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">
-              <circle cx="${avatar.x}" cy="${avatar.y}" r="${AVATAR_RADIUS}" />
-            </clipPath>
-          </defs>
-          <image href="${escapeHtml(avatarSrc)}"
-            x="${avatar.x - AVATAR_RADIUS}" y="${avatar.y - AVATAR_RADIUS}"
-            width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"
-            preserveAspectRatio="xMidYMid slice"
-            clip-path="url(#${clipId})" />
-        `;
-    } else if (hasOwner) {
-      avatarMarkup = `
-          <circle cx="${avatar.x}" cy="${avatar.y}" fill="${fill}" r="${AVATAR_RADIUS}" />
-          <text fill="#ffffff" font-size="11" font-weight="900"
-            text-anchor="middle" x="${avatar.x}" y="${avatar.y + 4}">${initials}</text>
-        `;
-    } else {
-      avatarMarkup = `
-          <circle cx="${avatar.x}" cy="${avatar.y}" fill="#f8fafc" r="${AVATAR_RADIUS}"
-            stroke="#0f766e" stroke-width="2" />
-          <text fill="#0f766e" font-size="18" font-weight="900"
-            text-anchor="middle" x="${avatar.x}" y="${avatar.y + 6}">+</text>
-        `;
-    }
-
-    return `
-      <g aria-label="${owner}" class="timeline-owner-action"
-        data-action="toggle-owner-menu" data-id="${escapeHtml(point.id)}"
-        role="button" tabindex="0">
-        <title>${owner}</title>
-        ${avatarMarkup}
-        <circle cx="${avatar.x}" cy="${avatar.y}" fill="none" r="${AVATAR_RADIUS}"
-          stroke="#ffffff" stroke-width="3" />
-        <circle cx="${avatar.x}" cy="${avatar.y}" fill="none" r="${AVATAR_RADIUS}"
-          stroke="#475569" stroke-width="1" />
-      </g>
-    `;
-  }
-
-  function renderSvgOwnerAvatarMask(layout) {
-    const point = layout.point;
-    const avatar = ownerAvatarPosition(point);
-
-    return `
-      <circle cx="${avatar.x}" cy="${avatar.y}" fill="#ffffff"
-        r="${AVATAR_RADIUS + 4}" />
-    `;
-  }
-
-  function renderSvgRiskIndicator(layout) {
-    const point = layout.point;
-    const summary = layout.riskSummary;
-    const icon = riskIconPosition(point);
-    const label = riskSummaryLabel(summary);
-    let indicatorMarkup;
-
-    if (summary.total === 0) {
-      indicatorMarkup = `
-        <circle fill="#f8fafc" r="12" stroke="#cbd5e1" stroke-width="2" />
-        <text fill="#475569" font-size="16" font-weight="950"
-          text-anchor="middle" x="0" y="5">+</text>
-      `;
-    } else if (summary.unresolved > 0) {
-      indicatorMarkup = `
-        <circle fill="#fef3c7" r="12" stroke="#d97706" stroke-width="2" />
-        <text fill="#7c2d12" font-size="12" font-weight="950"
-          text-anchor="middle" x="0" y="4">${escapeHtml(
-            summary.unresolved > 9 ? "!" : summary.unresolved,
-          )}</text>
-      `;
-    } else {
-      indicatorMarkup = `
-        <circle fill="#dcfce7" r="12" stroke="#16a34a" stroke-width="2" />
-        <path d="M -5 0 L -1 4 L 6 -5" fill="none" stroke="#15803d"
-          stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" />
-      `;
-    }
-
-    return `
-      <g aria-label="${escapeHtml(label)}" class="timeline-risk-action"
-        data-action="toggle-risk-popover" data-id="${escapeHtml(point.id)}"
-        role="button" tabindex="0" transform="translate(${icon.x} ${icon.y})">
-        <title>${escapeHtml(label)}</title>
-        ${indicatorMarkup}
-      </g>
-    `;
-  }
-
-  function renderSvgRiskIndicatorMask(layout) {
-    const icon = riskIconPosition(layout.point);
-
-    return `<circle cx="${icon.x}" cy="${icon.y}" fill="#ffffff" r="15" />`;
-  }
-
   function renderChart(model, showMarker) {
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
@@ -1647,12 +1523,8 @@
         const labelOpacity = point.timelineState === "completed" ? 0.56 : 1;
         const title = escapeHtml(point.titleLabel);
         const dateLabel = escapeHtml(point.dateLabel);
-        const detailsIconSide = point.labelRight > CHART_WIDTH - 42 ? -1 : 1;
-        const detailsIconX =
-          detailsIconSide === 1 ? point.labelRight + 14 : point.labelLeft - 14;
-        const detailsIconY = labelRectY + 24;
-        const hasDetails = Boolean(String(point.details || "").trim());
-        const summary = riskSummary(point);
+        const editIconX = point.labelRight - 18;
+        const editIconY = labelRectY + 16;
         const connectorColor =
           point.timelineState === "overdue" ? "#d97706" : "#94a3b8";
         const connectorWidth = point.timelineState === "overdue" ? 3 : 2;
@@ -1672,14 +1544,12 @@
           connectorY: connectorY,
           dateLabel: dateLabel,
           dateY: dateY,
-          detailsIconX: detailsIconX,
-          detailsIconY: detailsIconY,
-          hasDetails: hasDetails,
+          editIconX: editIconX,
+          editIconY: editIconY,
           labelOpacity: labelOpacity,
           labelRectY: labelRectY,
           markerMaskRadius: markerMaskRadius,
           point: point,
-          riskSummary: summary,
           style: style,
           title: title,
           titleY: titleY,
@@ -1706,10 +1576,6 @@
             r="${layout.anchorMaskRadius}" />
           <circle cx="${point.labelX}" cy="${point.y}" fill="#ffffff"
             r="${layout.markerMaskRadius}" />
-          ${renderSvgOwnerAvatarMask(layout)}
-          <circle cx="${layout.detailsIconX}" cy="${layout.detailsIconY}"
-            fill="#ffffff" r="15" />
-          ${renderSvgRiskIndicatorMask(layout)}
           <rect fill="#ffffff" height="48" rx="7"
             width="${point.labelWidth}" x="${point.labelLeft}"
             y="${layout.labelRectY}" />
@@ -1717,11 +1583,11 @@
       })
       .join("");
     const pointMarkup = pointLayouts
-      .map(function (layout, index) {
+      .map(function (layout) {
         const point = layout.point;
 
         return `
-          <g opacity="${layout.labelOpacity}">
+          <g class="timeline-point" opacity="${layout.labelOpacity}">
             <circle class="timeline-date-handle" cx="${point.x}" cy="${model.axisY}"
               data-action="drag-date" data-id="${escapeHtml(point.id)}"
               fill="#ffffff" r="9" stroke="${layout.anchorColor}"
@@ -1734,7 +1600,6 @@
                 stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
               ${statusIcon(point.timelineState)}
             </g>
-            ${renderSvgOwnerAvatar(layout, index)}
             <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
               data-action="edit-title" data-id="${escapeHtml(point.id)}"
               role="button" tabindex="0">
@@ -1745,19 +1610,17 @@
               <text fill="#0f172a" font-size="18" font-weight="800"
                 text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
             </g>
-            <g aria-label="Details for ${layout.title}" class="timeline-details-action"
-              data-action="toggle-details-popover" data-id="${escapeHtml(point.id)}"
+            <g aria-label="Edit ${layout.title}" class="timeline-edit-action"
+              data-action="open-milestone-dialog" data-id="${escapeHtml(point.id)}"
               role="button" tabindex="0"
-              transform="translate(${layout.detailsIconX} ${layout.detailsIconY})">
-              <title>Details for ${layout.title}</title>
-              <circle fill="${layout.hasDetails ? "#ecfeff" : "#f8fafc"}" r="12"
-                stroke="${layout.hasDetails ? "#0f766e" : "#cbd5e1"}"
-                stroke-width="2" />
-              <text fill="${layout.hasDetails ? "#0f766e" : "#475569"}"
-                font-size="15" font-weight="950" text-anchor="middle"
-                x="0" y="5">i</text>
+              transform="translate(${layout.editIconX} ${layout.editIconY})">
+              <title>Edit ${layout.title}</title>
+              <circle fill="#ffffff" r="10" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M -4 4 L -2 0 L 4 -6 L 7 -3 L 1 3 Z"
+                fill="#64748b" />
+              <path d="M -4 4 L 1 3" fill="none" stroke="#334155"
+                stroke-linecap="round" stroke-width="1.2" />
             </g>
-            ${renderSvgRiskIndicator(layout)}
             <text fill="#64748b" font-size="15" font-weight="600"
               text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
           </g>
@@ -1844,10 +1707,6 @@
     }
 
     return "All mitigated";
-  }
-
-  function riskButtonLabel(summary) {
-    return summary.total > 0 ? `Risks ${summary.total}` : "Risks";
   }
 
   function riskHistoryKey(milestoneId, riskId) {
@@ -2020,6 +1879,49 @@
         </div>
       </div>
     `;
+  }
+
+  function renderMilestoneOwnerOptions(milestone) {
+    const personOptions = state.people
+      .map(function (person) {
+        return `
+          <option value="${escapeHtml(person.id)}" ${
+            person.id === milestone.ownerId ? "selected" : ""
+          }>
+            ${escapeHtml(ownerLabel(person) || "Unnamed person")}
+          </option>
+        `;
+      })
+      .join("");
+
+    return `
+      <option value="" ${milestone.ownerId ? "" : "selected"}>Unassigned</option>
+      ${personOptions}
+      <option value="__add_person">Add person...</option>
+    `;
+  }
+
+  function renderMilestoneDialog() {
+    if (!milestoneDialogMilestoneId || !elements.milestoneDialog.open) {
+      return;
+    }
+
+    const milestone = findMilestone(milestoneDialogMilestoneId);
+
+    if (!milestone) {
+      closeMilestoneDialog();
+      return;
+    }
+
+    elements.milestoneDialogTitle.textContent = "Edit milestone";
+    elements.milestoneTitleInput.value = milestone.title;
+    elements.milestoneOwnerSelect.innerHTML =
+      renderMilestoneOwnerOptions(milestone);
+    elements.milestoneDetailsInput.value = milestone.details || "";
+    elements.milestoneDialogRisks.innerHTML = renderRiskControls(
+      milestone,
+      "dialog",
+    );
   }
 
   function renderTimelineList() {
@@ -2207,102 +2109,6 @@
     `;
   }
 
-  function renderDetailsPopoverLayer() {
-    if (!detailsPopoverMilestoneId) {
-      elements.detailsPopoverLayer.innerHTML = "";
-      return;
-    }
-
-    const milestone = state.milestones.find(function (candidate) {
-      return candidate.id === detailsPopoverMilestoneId;
-    });
-
-    if (!milestone) {
-      detailsPopoverMilestoneId = "";
-      elements.detailsPopoverLayer.innerHTML = "";
-      return;
-    }
-
-    const date = parseDateValue(milestone.at, state.includeTimes);
-    const dateLabel = date
-      ? formatMilestoneDate(date, state.includeTimes)
-      : "No date";
-
-    elements.detailsPopoverLayer.innerHTML = `
-      <div
-        class="details-popover-panel"
-        style="left: ${detailsPopoverPosition.left}px; top: ${detailsPopoverPosition.top}px;"
-      >
-        <div class="details-popover-header">
-          <div class="details-popover-title">
-            <strong>${escapeHtml(milestone.title || "Untitled milestone")}</strong>
-            <span>${escapeHtml(dateLabel)}</span>
-          </div>
-          <button
-            aria-label="Close details"
-            class="icon-button details-popover-close"
-            data-action="close-details-popover"
-            type="button"
-          >
-            &times;
-          </button>
-        </div>
-        <textarea
-          aria-label="Milestone details"
-          class="details-popover-textarea"
-          data-field="details"
-          data-id="${escapeHtml(milestone.id)}"
-          placeholder="Add details"
-        >${escapeHtml(milestone.details || "")}</textarea>
-      </div>
-    `;
-  }
-
-  function renderRiskPopoverLayer() {
-    if (!riskPopoverMilestoneId) {
-      elements.riskPopoverLayer.innerHTML = "";
-      return;
-    }
-
-    const milestone = state.milestones.find(function (candidate) {
-      return candidate.id === riskPopoverMilestoneId;
-    });
-
-    if (!milestone) {
-      riskPopoverMilestoneId = "";
-      elements.riskPopoverLayer.innerHTML = "";
-      return;
-    }
-
-    const date = parseDateValue(milestone.at, state.includeTimes);
-    const dateLabel = date
-      ? formatMilestoneDate(date, state.includeTimes)
-      : "No date";
-
-    elements.riskPopoverLayer.innerHTML = `
-      <div
-        class="risk-popover-panel"
-        style="left: ${riskPopoverPosition.left}px; top: ${riskPopoverPosition.top}px;"
-      >
-        <div class="risk-popover-header">
-          <div class="risk-popover-title">
-            <strong>${escapeHtml(milestone.title || "Untitled milestone")}</strong>
-            <span>${escapeHtml(dateLabel)}</span>
-          </div>
-          <button
-            aria-label="Close risks"
-            class="icon-button risk-popover-close"
-            data-action="close-risk-popover"
-            type="button"
-          >
-            &times;
-          </button>
-        </div>
-        ${renderRiskControls(milestone, "popover")}
-      </div>
-    `;
-  }
-
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
@@ -2315,35 +2121,6 @@
           : "Milestone date";
         const dateInputType = state.includeTimes ? "datetime-local" : "date";
         const dateInputValue = toInputValue(milestone.at, state.includeTimes);
-        const isDetailsExpanded = expandedDetailsMilestoneId === milestone.id;
-        const isRisksExpanded = expandedRisksMilestoneId === milestone.id;
-        const details = String(milestone.details || "");
-        const detailsLabel = details.trim()
-          ? "Details"
-          : "Add details";
-        const summary = riskSummary(milestone);
-        const detailsPanelMarkup = isDetailsExpanded
-          ? `
-              <div class="milestone-details-panel">
-                <label class="details-field">
-                  <span>Details</span>
-                  <textarea
-                    aria-label="Milestone details"
-                    data-field="details"
-                    data-id="${escapeHtml(milestone.id)}"
-                    placeholder="Add details"
-                  >${escapeHtml(details)}</textarea>
-                </label>
-              </div>
-            `
-          : "";
-        const risksPanelMarkup = isRisksExpanded
-          ? `
-              <div class="milestone-risks-panel">
-                ${renderRiskControls(milestone, "row")}
-              </div>
-            `
-          : "";
 
         return `
           <div class="milestone-editor-item editor-row-${timelineState}">
@@ -2370,23 +2147,17 @@
                 ${stateLabel(timelineState)}
               </span>
               <div class="row-actions">
-                <button
-                  aria-expanded="${isDetailsExpanded ? "true" : "false"}"
-                  class="details-toggle-button"
-                  data-action="toggle-details-row"
+                <button class="edit-milestone-button icon-button"
+                  aria-label="Edit milestone"
+                  data-action="open-milestone-dialog"
                   data-id="${escapeHtml(milestone.id)}"
+                  title="Edit milestone"
                   type="button"
                 >
-                  ${escapeHtml(isDetailsExpanded ? "Hide" : detailsLabel)}
-                </button>
-                <button
-                  aria-expanded="${isRisksExpanded ? "true" : "false"}"
-                  class="risks-toggle-button risks-toggle-${summary.state}"
-                  data-action="toggle-risks-row"
-                  data-id="${escapeHtml(milestone.id)}"
-                  type="button"
-                >
-                  ${escapeHtml(isRisksExpanded ? "Hide" : riskButtonLabel(summary))}
+                  <svg aria-hidden="true" viewBox="0 0 20 20">
+                    <path d="M4 14.5 5 11l7.4-7.4 3 3L8 14l-4 1z" />
+                    <path d="M11.5 4.5 14.5 7.5" />
+                  </svg>
                 </button>
                 <button class="remove-button" data-action="remove"
                   data-id="${escapeHtml(milestone.id)}" type="button">
@@ -2394,8 +2165,6 @@
                 </button>
               </div>
             </div>
-            ${detailsPanelMarkup}
-            ${risksPanelMarkup}
           </div>
         `;
       })
@@ -2446,8 +2215,7 @@
     renderRows(asOfDate);
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
-    renderDetailsPopoverLayer();
-    renderRiskPopoverLayer();
+    renderMilestoneDialog();
   }
 
   function updateMilestone(id, field, value, redrawRows) {
@@ -2466,7 +2234,6 @@
       render();
     } else if (field !== "details") {
       renderTimelineAndCounts();
-      renderDetailsPopoverLayer();
     }
   }
 
@@ -2598,6 +2365,7 @@
   function savePersonFromDialog() {
     const name = elements.personNameInput.value.trim();
     const email = elements.personEmailInput.value.trim();
+    const dialogContext = personDialogContext;
 
     if (!name) {
       elements.personNameInput.focus();
@@ -2623,9 +2391,9 @@
       person.photoDataUrl = pendingPersonPhotoDataUrl;
     }
 
-    if (personDialogContext && personDialogContext.assignToMilestoneId) {
+    if (dialogContext && dialogContext.assignToMilestoneId) {
       state.milestones = state.milestones.map(function (milestone) {
-        if (milestone.id !== personDialogContext.assignToMilestoneId) {
+        if (milestone.id !== dialogContext.assignToMilestoneId) {
           return milestone;
         }
 
@@ -2636,13 +2404,13 @@
     }
 
     if (
-      personDialogContext &&
-      personDialogContext.assignToRiskMilestoneId &&
-      personDialogContext.assignToRiskId
+      dialogContext &&
+      dialogContext.assignToRiskMilestoneId &&
+      dialogContext.assignToRiskId
     ) {
       const risk = findRisk(
-        personDialogContext.assignToRiskMilestoneId,
-        personDialogContext.assignToRiskId,
+        dialogContext.assignToRiskMilestoneId,
+        dialogContext.assignToRiskId,
       );
 
       if (risk && risk.ownerId !== person.id) {
@@ -2657,6 +2425,10 @@
     ownerMenuMilestoneId = "";
     closePersonDialog();
     saveAndRender();
+
+    if (dialogContext && dialogContext.reopenMilestoneDialogId) {
+      openMilestoneDialog(dialogContext.reopenMilestoneDialogId);
+    }
   }
 
   function addMilestone() {
@@ -2926,14 +2698,6 @@
     statusMenuPosition = positionFloatingMenu(target, 190, 96);
   }
 
-  function positionDetailsPopover(target) {
-    detailsPopoverPosition = positionFloatingMenu(target, 340, 238);
-  }
-
-  function positionRiskPopover(target) {
-    riskPopoverPosition = positionFloatingMenu(target, 440, 420);
-  }
-
   function findMilestone(milestoneId) {
     return state.milestones.find(function (milestone) {
       return milestone.id === milestoneId;
@@ -2967,7 +2731,7 @@
     saveState();
     renderTimelineAndCounts();
     renderRows(parseDateValue(state.asOf, state.includeTimes));
-    renderRiskPopoverLayer();
+    renderMilestoneDialog();
   }
 
   function addRisk(milestoneId) {
@@ -2980,7 +2744,6 @@
     milestone.risks = milestoneRisks(milestone).concat([
       createRisk("New risk", "", "open"),
     ]);
-    expandedRisksMilestoneId = milestoneId;
     rerenderRisks();
   }
 
@@ -3043,29 +2806,51 @@
     rerenderRisks();
   }
 
+  function openMilestoneDialog(milestoneId) {
+    const milestone = findMilestone(milestoneId);
+
+    if (!milestone) {
+      return;
+    }
+
+    closeTitleEditor(false);
+    closeFloatingMenus();
+    milestoneDialogMilestoneId = milestoneId;
+
+    if (typeof elements.milestoneDialog.showModal === "function") {
+      elements.milestoneDialog.showModal();
+    } else {
+      elements.milestoneDialog.setAttribute("open", "");
+    }
+
+    renderMilestoneDialog();
+  }
+
+  function closeMilestoneDialog() {
+    if (typeof elements.milestoneDialog.close === "function") {
+      elements.milestoneDialog.close();
+    } else {
+      elements.milestoneDialog.removeAttribute("open");
+    }
+
+    milestoneDialogMilestoneId = "";
+  }
+
   function closeFloatingMenus() {
-    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
-    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
-    renderDetailsPopoverLayer();
     renderOwnerMenuLayer();
-    renderRiskPopoverLayer();
     renderStatusMenuLayer();
   }
 
   function assignOwner(milestoneId, personId) {
-    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
-    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     updateMilestone(milestoneId, "ownerId", personId, true);
   }
 
   function assignStatus(milestoneId, status) {
-    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
-    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     updateMilestone(
       milestoneId,
@@ -3077,8 +2862,6 @@
 
   function toggleOwnerMenu(milestoneId, target) {
     closeTitleEditor(false);
-    detailsPopoverMilestoneId = "";
-    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     ownerMenuMilestoneId =
       ownerMenuMilestoneId === milestoneId ? "" : milestoneId;
@@ -3089,15 +2872,11 @@
 
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
-    renderDetailsPopoverLayer();
-    renderRiskPopoverLayer();
   }
 
   function openStatusMenu(milestoneId, target) {
     closeTitleEditor(false);
-    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
-    riskPopoverMilestoneId = "";
     statusMenuMilestoneId =
       statusMenuMilestoneId === milestoneId ? "" : milestoneId;
 
@@ -3107,38 +2886,6 @@
 
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
-    renderDetailsPopoverLayer();
-    renderRiskPopoverLayer();
-  }
-
-  function toggleDetailsRow(milestoneId) {
-    expandedDetailsMilestoneId =
-      expandedDetailsMilestoneId === milestoneId ? "" : milestoneId;
-    renderRows(parseDateValue(state.asOf, state.includeTimes));
-  }
-
-  function toggleDetailsPopover(milestoneId, target) {
-    closeTitleEditor(false);
-    ownerMenuMilestoneId = "";
-    riskPopoverMilestoneId = "";
-    statusMenuMilestoneId = "";
-    detailsPopoverMilestoneId =
-      detailsPopoverMilestoneId === milestoneId ? "" : milestoneId;
-
-    if (detailsPopoverMilestoneId) {
-      positionDetailsPopover(target);
-    }
-
-    renderOwnerMenuLayer();
-    renderStatusMenuLayer();
-    renderDetailsPopoverLayer();
-    renderRiskPopoverLayer();
-  }
-
-  function toggleRisksRow(milestoneId) {
-    expandedRisksMilestoneId =
-      expandedRisksMilestoneId === milestoneId ? "" : milestoneId;
-    renderRows(parseDateValue(state.asOf, state.includeTimes));
   }
 
   function toggleRiskHistory(milestoneId, riskId) {
@@ -3146,25 +2893,7 @@
 
     expandedRiskHistoryKey = expandedRiskHistoryKey === key ? "" : key;
     renderRows(parseDateValue(state.asOf, state.includeTimes));
-    renderRiskPopoverLayer();
-  }
-
-  function toggleRiskPopover(milestoneId, target) {
-    closeTitleEditor(false);
-    detailsPopoverMilestoneId = "";
-    ownerMenuMilestoneId = "";
-    statusMenuMilestoneId = "";
-    riskPopoverMilestoneId =
-      riskPopoverMilestoneId === milestoneId ? "" : milestoneId;
-
-    if (riskPopoverMilestoneId) {
-      positionRiskPopover(target);
-    }
-
-    renderDetailsPopoverLayer();
-    renderOwnerMenuLayer();
-    renderStatusMenuLayer();
-    renderRiskPopoverLayer();
+    renderMilestoneDialog();
   }
 
   function closeTitleEditor(saveChanges) {
@@ -3346,11 +3075,18 @@
           event.target.dataset.id,
           event.target.dataset.riskId,
         );
+        const reopenMilestoneDialogId = elements.milestoneDialog.open
+          ? event.target.dataset.id
+          : "";
 
         event.target.value = risk ? risk.ownerId : "";
+        if (reopenMilestoneDialogId) {
+          closeMilestoneDialog();
+        }
         openPersonDialog({
           assignToRiskId: event.target.dataset.riskId,
           assignToRiskMilestoneId: event.target.dataset.id,
+          reopenMilestoneDialogId: reopenMilestoneDialogId,
         });
         return true;
       }
@@ -3378,19 +3114,8 @@
       return true;
     }
 
-    if (actionTarget.dataset.action === "toggle-risks-row") {
-      toggleRisksRow(actionTarget.dataset.id);
-      return true;
-    }
-
     if (actionTarget.dataset.action === "toggle-risk-history") {
       toggleRiskHistory(actionTarget.dataset.id, actionTarget.dataset.riskId);
-      return true;
-    }
-
-    if (actionTarget.dataset.action === "close-risk-popover") {
-      riskPopoverMilestoneId = "";
-      renderRiskPopoverLayer();
       return true;
     }
 
@@ -3459,23 +3184,13 @@
       return;
     }
 
-    const detailsTarget = closestMatch(
+    const editTarget = closestMatch(
       event.target,
-      '[data-action="toggle-details-popover"]',
+      '[data-action="open-milestone-dialog"]',
     );
 
-    if (detailsTarget) {
-      toggleDetailsPopover(detailsTarget.dataset.id, detailsTarget);
-      return;
-    }
-
-    const riskTarget = closestMatch(
-      event.target,
-      '[data-action="toggle-risk-popover"]',
-    );
-
-    if (riskTarget) {
-      toggleRiskPopover(riskTarget.dataset.id, riskTarget);
+    if (editTarget) {
+      openMilestoneDialog(editTarget.dataset.id);
       return;
     }
 
@@ -3578,13 +3293,13 @@
       return;
     }
 
-    const detailsButton = closestMatch(
+    const editButton = closestMatch(
       event.target,
-      '[data-action="toggle-details-row"]',
+      '[data-action="open-milestone-dialog"]',
     );
 
-    if (detailsButton) {
-      toggleDetailsRow(detailsButton.dataset.id);
+    if (editButton) {
+      openMilestoneDialog(editButton.dataset.id);
       return;
     }
 
@@ -3599,20 +3314,8 @@
     }
 
     if (event.target.dataset.action === "remove") {
-      if (expandedDetailsMilestoneId === event.target.dataset.id) {
-        expandedDetailsMilestoneId = "";
-      }
-
-      if (expandedRisksMilestoneId === event.target.dataset.id) {
-        expandedRisksMilestoneId = "";
-      }
-
-      if (detailsPopoverMilestoneId === event.target.dataset.id) {
-        detailsPopoverMilestoneId = "";
-      }
-
-      if (riskPopoverMilestoneId === event.target.dataset.id) {
-        riskPopoverMilestoneId = "";
+      if (milestoneDialogMilestoneId === event.target.dataset.id) {
+        closeMilestoneDialog();
       }
 
       state.milestones = state.milestones.filter(function (milestone) {
@@ -3622,37 +3325,85 @@
     }
   });
 
-  elements.riskPopoverLayer.addEventListener("input", function (event) {
-    handleRiskInput(event);
+  elements.milestoneForm.addEventListener("submit", function (event) {
+    event.preventDefault();
   });
 
-  elements.riskPopoverLayer.addEventListener("change", function (event) {
-    handleRiskChange(event);
-  });
+  elements.milestoneForm.addEventListener("input", function (event) {
+    if (handleRiskInput(event)) {
+      return;
+    }
 
-  elements.riskPopoverLayer.addEventListener("click", function (event) {
-    handleRiskClick(event);
-  });
+    if (!milestoneDialogMilestoneId) {
+      return;
+    }
 
-  elements.detailsPopoverLayer.addEventListener("input", function (event) {
-    const field = event.target.dataset.field;
-    const id = event.target.dataset.id;
+    if (event.target === elements.milestoneTitleInput) {
+      updateMilestone(
+        milestoneDialogMilestoneId,
+        "title",
+        event.target.value || "Untitled milestone",
+        false,
+      );
+      return;
+    }
 
-    if (field === "details") {
-      updateMilestone(id, field, event.target.value, false);
+    if (event.target === elements.milestoneDetailsInput) {
+      updateMilestone(
+        milestoneDialogMilestoneId,
+        "details",
+        event.target.value,
+        false,
+      );
     }
   });
 
-  elements.detailsPopoverLayer.addEventListener("click", function (event) {
-    const actionTarget = closestMatch(event.target, "[data-action]");
+  elements.milestoneForm.addEventListener("change", function (event) {
+    if (handleRiskChange(event)) {
+      return;
+    }
 
     if (
-      actionTarget &&
-      actionTarget.dataset.action === "close-details-popover"
+      event.target === elements.milestoneOwnerSelect &&
+      milestoneDialogMilestoneId
     ) {
-      detailsPopoverMilestoneId = "";
-      renderDetailsPopoverLayer();
+      if (event.target.value === "__add_person") {
+        const milestoneId = milestoneDialogMilestoneId;
+        const milestone = findMilestone(milestoneId);
+
+        event.target.value = milestone ? milestone.ownerId : "";
+        closeMilestoneDialog();
+        openPersonDialog({
+          assignToMilestoneId: milestoneId,
+          reopenMilestoneDialogId: milestoneId,
+        });
+        return;
+      }
+
+      updateMilestone(
+        milestoneDialogMilestoneId,
+        "ownerId",
+        event.target.value,
+        true,
+      );
     }
+  });
+
+  elements.milestoneForm.addEventListener("click", function (event) {
+    if (handleRiskClick(event)) {
+      return;
+    }
+
+    if (
+      event.target === elements.cancelMilestoneButton ||
+      event.target === elements.doneMilestoneButton
+    ) {
+      closeMilestoneDialog();
+    }
+  });
+
+  elements.milestoneDialog.addEventListener("close", function () {
+    milestoneDialogMilestoneId = "";
   });
 
   elements.titleEditLayer.addEventListener("keydown", function (event) {
@@ -3772,16 +3523,9 @@
 
     document.addEventListener("click", function (event) {
       if (
-        (!ownerMenuMilestoneId &&
-          !statusMenuMilestoneId &&
-          !detailsPopoverMilestoneId &&
-          !riskPopoverMilestoneId) ||
-        closestMatch(event.target, ".details-popover-panel") ||
+        (!ownerMenuMilestoneId && !statusMenuMilestoneId) ||
         closestMatch(event.target, ".owner-menu-panel") ||
-        closestMatch(event.target, ".risk-popover-panel") ||
         closestMatch(event.target, ".status-menu-panel") ||
-        closestMatch(event.target, '[data-action="toggle-details-popover"]') ||
-        closestMatch(event.target, '[data-action="toggle-risk-popover"]') ||
         closestMatch(event.target, '[data-action="toggle-owner-menu"]') ||
         closestMatch(event.target, '[data-action="drag-date"]')
       ) {
