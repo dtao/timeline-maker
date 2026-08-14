@@ -7,7 +7,8 @@ entries, with optional time support.
 
 - Editable milestone title, date, and status fields
 - Optional milestone details in the milestone edit dialog
-- Milestone risks with optional owners, mitigation state, and per-risk history
+- Milestone risks with optional owners, mitigation state, per-risk history, and
+  small timeline risk-state dots
 - Shared people list for milestone owners, with initials, Gravatar email lookup,
   or uploaded local avatar images
 - Direct visualization editing for titles, dates, owners, status, and adding

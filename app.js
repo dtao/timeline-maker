@@ -1436,6 +1436,32 @@
     return '<circle cx="0" cy="0" fill="#0f766e" r="4" />';
   }
 
+  function renderTimelineRiskIndicator(summary) {
+    if (summary.state === "none") {
+      return "";
+    }
+
+    const label = escapeHtml(riskSummaryLabel(summary));
+    const indicator =
+      summary.state === "mixed"
+        ? [
+            '<circle fill="#16a34a" r="7" />',
+            '<path d="M 0 -7 A 7 7 0 0 1 0 7 Z" fill="#d97706" />',
+          ].join("")
+        : `<circle fill="${
+            summary.state === "resolved" ? "#16a34a" : "#d97706"
+          }" r="7" />`;
+
+    return `
+      <g aria-label="${label}" class="timeline-risk-status" role="img">
+        <title>${label}</title>
+        ${indicator}
+        <circle fill="none" r="7" stroke="#ffffff" stroke-width="2" />
+        <circle fill="none" r="8.5" stroke="#94a3b8" stroke-width="1" />
+      </g>
+    `;
+  }
+
   function renderChart(model, showMarker) {
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
@@ -1525,6 +1551,9 @@
         const dateLabel = escapeHtml(point.dateLabel);
         const editIconX = point.labelRight - 18;
         const editIconY = labelRectY + 16;
+        const riskDotX = point.labelX + 19;
+        const riskDotY = point.y - 18;
+        const risk = riskSummary(point);
         const connectorColor =
           point.timelineState === "overdue" ? "#d97706" : "#94a3b8";
         const connectorWidth = point.timelineState === "overdue" ? 3 : 2;
@@ -1550,6 +1579,9 @@
           labelRectY: labelRectY,
           markerMaskRadius: markerMaskRadius,
           point: point,
+          risk: risk,
+          riskDotX: riskDotX,
+          riskDotY: riskDotY,
           style: style,
           title: title,
           titleY: titleY,
@@ -1576,6 +1608,12 @@
             r="${layout.anchorMaskRadius}" />
           <circle cx="${point.labelX}" cy="${point.y}" fill="#ffffff"
             r="${layout.markerMaskRadius}" />
+          ${
+            layout.risk.state === "none"
+              ? ""
+              : `<circle cx="${layout.riskDotX}" cy="${layout.riskDotY}"
+                  fill="#ffffff" r="10" />`
+          }
           <rect fill="#ffffff" height="48" rx="7"
             width="${point.labelWidth}" x="${point.labelLeft}"
             y="${layout.labelRectY}" />
@@ -1599,6 +1637,9 @@
               <circle fill="${layout.style.fill}" opacity="${layout.style.opacity}" r="21"
                 stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
               ${statusIcon(point.timelineState)}
+              <g transform="translate(19 -18)">
+                ${renderTimelineRiskIndicator(layout.risk)}
+              </g>
             </g>
             <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
               data-action="edit-title" data-id="${escapeHtml(point.id)}"
@@ -1687,11 +1728,18 @@
     const unresolved = risks.filter(function (risk) {
       return risk.status !== "resolved";
     }).length;
+    const state =
+      risks.length === 0
+        ? "none"
+        : unresolved === 0
+          ? "resolved"
+          : unresolved === risks.length
+            ? "open"
+            : "mixed";
 
     return {
       resolved: risks.length - unresolved,
-      state:
-        risks.length === 0 ? "none" : unresolved > 0 ? "open" : "resolved",
+      state: state,
       total: risks.length,
       unresolved: unresolved,
     };
@@ -1700,6 +1748,10 @@
   function riskSummaryLabel(summary) {
     if (summary.total === 0) {
       return "No risks";
+    }
+
+    if (summary.state === "mixed") {
+      return `${summary.unresolved} unresolved, ${summary.resolved} mitigated`;
     }
 
     if (summary.unresolved > 0) {

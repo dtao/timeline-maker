@@ -424,6 +424,10 @@ h1 {
   pointer-events: auto;
 }
 
+.timeline-risk-status {
+  pointer-events: none;
+}
+
 .timeline-axis-hit-target {
   cursor: copy;
 }
@@ -734,6 +738,10 @@ h1 {
 
 .risk-summary-resolved .risk-summary-dot {
   background: #16a34a;
+}
+
+.risk-summary-mixed .risk-summary-dot {
+  background: linear-gradient(90deg, #16a34a 0 50%, #d97706 50% 100%);
 }
 
 .add-risk-button {
