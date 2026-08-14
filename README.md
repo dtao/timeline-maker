@@ -6,6 +6,7 @@ entries, with optional time support.
 ## Features
 
 - Editable milestone title, date, and status fields
+- Optional milestone details in the list and timeline popover
 - Shared people list for milestone owners, with initials, Gravatar email lookup,
   or uploaded local avatar images
 - Direct visualization editing for titles, dates, owners, status, and adding
@@ -25,7 +26,7 @@ storage with the rest of the timeline data.
 
 Milestones can be edited from the visualization by clicking a title, dragging a
 milestone marker to reschedule, clicking an owner avatar, or clicking a status
-marker.
+marker. Details can be edited from the list expansion or timeline popover.
 
 ## Run
 

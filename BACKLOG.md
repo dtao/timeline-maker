@@ -5,5 +5,5 @@
       on hover over solid line)
 - [x] Add ability to create milestone directly from list view ("+ Add milestone"
       at the bottom of the list)
-- [ ] Milestones should also have optional details - can expand to add in list
+- [x] Milestones should also have optional details - can expand to add in list
       view, appears in pop-up if you click on "Details" icon in timeline view

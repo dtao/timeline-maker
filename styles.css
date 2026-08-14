@@ -31,7 +31,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -71,13 +72,15 @@ button:disabled:hover {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgb(20 184 166 / 0.28);
   outline-offset: 2px;
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 42px;
   width: 100%;
   border: 1px solid var(--line-strong);
@@ -85,6 +88,13 @@ select {
   background: var(--panel);
   color: var(--ink);
   padding: 0 12px;
+}
+
+textarea {
+  min-height: 90px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  resize: vertical;
 }
 
 .workspace-shell {
@@ -400,6 +410,14 @@ h1 {
   cursor: pointer;
 }
 
+.timeline-details-action {
+  cursor: pointer;
+}
+
+.timeline-details-action text {
+  pointer-events: none;
+}
+
 .timeline-axis-hit-target {
   cursor: copy;
 }
@@ -418,9 +436,9 @@ h1 {
 
 .editor-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 1.35fr) 180px 72px 140px 118px 96px;
+  grid-template-columns: minmax(240px, 1.35fr) 180px 72px 140px 118px 132px;
   gap: 10px;
-  min-width: 920px;
+  min-width: 960px;
   align-items: center;
 }
 
@@ -439,7 +457,7 @@ h1 {
 }
 
 .editor-footer {
-  min-width: 920px;
+  min-width: 960px;
   border-top: 1px solid #eef2f7;
   padding: 12px 14px 14px;
 }
@@ -448,13 +466,16 @@ h1 {
   min-width: 178px;
 }
 
-.editor-row {
+.milestone-editor-item {
   border-bottom: 1px solid #eef2f7;
-  padding: 10px 14px;
 }
 
-.editor-row:last-child {
+.milestone-editor-item:last-child {
   border-bottom: 0;
+}
+
+.editor-row {
+  padding: 10px 14px;
 }
 
 .editor-row-completed {
@@ -513,9 +534,46 @@ h1 {
   padding: 0;
 }
 
+.row-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.row-actions button {
+  min-height: 36px;
+  font-size: 0.78rem;
+  padding: 0 8px;
+}
+
+.details-toggle-button {
+  color: var(--teal);
+}
+
+.milestone-details-panel {
+  padding: 0 14px 14px;
+}
+
+.details-field {
+  display: grid;
+  gap: 7px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.details-field textarea {
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
 .title-edit-layer,
 .owner-menu-layer,
-.status-menu-layer {
+.status-menu-layer,
+.details-popover-layer {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -630,6 +688,61 @@ h1 {
   border-color: #99f6e4;
   background: #ecfeff;
   color: #134e4a;
+}
+
+.details-popover-panel {
+  position: fixed;
+  display: grid;
+  width: min(340px, calc(100vw - 24px));
+  gap: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 20px 46px rgb(15 23 42 / 0.18);
+  padding: 12px;
+  pointer-events: auto;
+}
+
+.details-popover-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.details-popover-title {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.details-popover-title strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details-popover-title span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.details-popover-close {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  font-size: 1.15rem;
+}
+
+.details-popover-textarea {
+  min-height: 120px;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .upload-button {

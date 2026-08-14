@@ -27,6 +27,7 @@
     completedCount: document.querySelector("#completedCount"),
     dateColumnLabel: document.querySelector("#dateColumnLabel"),
     deleteTimelineButton: document.querySelector("#deleteTimelineButton"),
+    detailsPopoverLayer: document.querySelector("#detailsPopoverLayer"),
     downloadButton: document.querySelector("#downloadButton"),
     downloadPngButton: document.querySelector("#downloadPngButton"),
     duplicateTimelineButton: document.querySelector("#duplicateTimelineButton"),
@@ -65,6 +66,9 @@
   let currentTimelineModel = null;
   let dragState = null;
   let editingTitleMilestoneId = "";
+  let detailsPopoverMilestoneId = "";
+  let detailsPopoverPosition = { left: 0, top: 0 };
+  let expandedDetailsMilestoneId = "";
   let timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
   let ownerMenuMilestoneId = "";
   let ownerMenuPosition = { left: 0, top: 0 };
@@ -185,6 +189,7 @@
         id: "brief-approved",
         title: "Brief approved",
         at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
+        details: "Scope, success metrics, and kickoff owners are confirmed.",
         ownerId: "person-ari-chen",
         status: "completed",
       },
@@ -192,6 +197,7 @@
         id: "data-freeze",
         title: "Data freeze",
         at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
+        details: "Reporting inputs are locked before final validation starts.",
         ownerId: "person-maya-patel",
         status: "completed",
       },
@@ -199,6 +205,7 @@
         id: "design-review",
         title: "Design review",
         at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
+        details: "Review flow, edge states, and launch-readiness notes.",
         ownerId: "person-jon-bell",
         status: "pending",
       },
@@ -206,6 +213,7 @@
         id: "beta-launch",
         title: "Beta launch",
         at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
+        details: "Invite pilot users and monitor feedback during the first week.",
         ownerId: "person-sam-rivera",
         status: "pending",
       },
@@ -213,6 +221,7 @@
         id: "public-release",
         title: "Public release",
         at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
+        details: "Publish the release package and announce availability.",
         ownerId: "person-nina-park",
         status: "pending",
       },
@@ -387,6 +396,8 @@
           : `saved-${index}-${makeId()}`,
       title: typeof candidate.title === "string" ? candidate.title : "",
       at: typeof candidate.at === "string" ? candidate.at : "",
+      details:
+        typeof candidate.details === "string" ? candidate.details : "",
       ownerId: ownerId,
       status: candidate.status === "completed" ? "completed" : "pending",
     };
@@ -595,7 +606,7 @@
           people: state.people,
           sidebarCollapsed: state.sidebarCollapsed,
           timelines: state.timelines,
-          version: 3,
+          version: 4,
         }),
       );
     } catch (_error) {
@@ -1438,6 +1449,11 @@
         const labelOpacity = point.timelineState === "completed" ? 0.56 : 1;
         const title = escapeHtml(point.titleLabel);
         const dateLabel = escapeHtml(point.dateLabel);
+        const detailsIconSide = point.labelRight > CHART_WIDTH - 42 ? -1 : 1;
+        const detailsIconX =
+          detailsIconSide === 1 ? point.labelRight + 14 : point.labelLeft - 14;
+        const detailsIconY = labelRectY + 24;
+        const hasDetails = Boolean(String(point.details || "").trim());
         const connectorColor =
           point.timelineState === "overdue" ? "#d97706" : "#94a3b8";
         const connectorWidth = point.timelineState === "overdue" ? 3 : 2;
@@ -1457,6 +1473,9 @@
           connectorY: connectorY,
           dateLabel: dateLabel,
           dateY: dateY,
+          detailsIconX: detailsIconX,
+          detailsIconY: detailsIconY,
+          hasDetails: hasDetails,
           labelOpacity: labelOpacity,
           labelRectY: labelRectY,
           markerMaskRadius: markerMaskRadius,
@@ -1488,6 +1507,8 @@
           <circle cx="${point.labelX}" cy="${point.y}" fill="#ffffff"
             r="${layout.markerMaskRadius}" />
           ${renderSvgOwnerAvatarMask(layout)}
+          <circle cx="${layout.detailsIconX}" cy="${layout.detailsIconY}"
+            fill="#ffffff" r="15" />
           <rect fill="#ffffff" height="48" rx="7"
             width="${point.labelWidth}" x="${point.labelLeft}"
             y="${layout.labelRectY}" />
@@ -1522,6 +1543,18 @@
                 y="${layout.labelRectY}" />
               <text fill="#0f172a" font-size="18" font-weight="800"
                 text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
+            </g>
+            <g aria-label="Details for ${layout.title}" class="timeline-details-action"
+              data-action="toggle-details-popover" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0"
+              transform="translate(${layout.detailsIconX} ${layout.detailsIconY})">
+              <title>Details for ${layout.title}</title>
+              <circle fill="${layout.hasDetails ? "#ecfeff" : "#f8fafc"}" r="12"
+                stroke="${layout.hasDetails ? "#0f766e" : "#cbd5e1"}"
+                stroke-width="2" />
+              <text fill="${layout.hasDetails ? "#0f766e" : "#475569"}"
+                font-size="15" font-weight="950" text-anchor="middle"
+                x="0" y="5">i</text>
             </g>
             <text fill="#64748b" font-size="15" font-weight="600"
               text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
@@ -1785,6 +1818,57 @@
     `;
   }
 
+  function renderDetailsPopoverLayer() {
+    if (!detailsPopoverMilestoneId) {
+      elements.detailsPopoverLayer.innerHTML = "";
+      return;
+    }
+
+    const milestone = state.milestones.find(function (candidate) {
+      return candidate.id === detailsPopoverMilestoneId;
+    });
+
+    if (!milestone) {
+      detailsPopoverMilestoneId = "";
+      elements.detailsPopoverLayer.innerHTML = "";
+      return;
+    }
+
+    const date = parseDateValue(milestone.at, state.includeTimes);
+    const dateLabel = date
+      ? formatMilestoneDate(date, state.includeTimes)
+      : "No date";
+
+    elements.detailsPopoverLayer.innerHTML = `
+      <div
+        class="details-popover-panel"
+        style="left: ${detailsPopoverPosition.left}px; top: ${detailsPopoverPosition.top}px;"
+      >
+        <div class="details-popover-header">
+          <div class="details-popover-title">
+            <strong>${escapeHtml(milestone.title || "Untitled milestone")}</strong>
+            <span>${escapeHtml(dateLabel)}</span>
+          </div>
+          <button
+            aria-label="Close details"
+            class="icon-button details-popover-close"
+            data-action="close-details-popover"
+            type="button"
+          >
+            &times;
+          </button>
+        </div>
+        <textarea
+          aria-label="Milestone details"
+          class="details-popover-textarea"
+          data-field="details"
+          data-id="${escapeHtml(milestone.id)}"
+          placeholder="Add details"
+        >${escapeHtml(milestone.details || "")}</textarea>
+      </div>
+    `;
+  }
+
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
@@ -1797,34 +1881,68 @@
           : "Milestone date";
         const dateInputType = state.includeTimes ? "datetime-local" : "date";
         const dateInputValue = toInputValue(milestone.at, state.includeTimes);
+        const isDetailsExpanded = expandedDetailsMilestoneId === milestone.id;
+        const details = String(milestone.details || "");
+        const detailsLabel = details.trim()
+          ? "Details"
+          : "Add details";
+        const detailsPanelMarkup = isDetailsExpanded
+          ? `
+              <div class="milestone-details-panel">
+                <label class="details-field">
+                  <span>Details</span>
+                  <textarea
+                    aria-label="Milestone details"
+                    data-field="details"
+                    data-id="${escapeHtml(milestone.id)}"
+                    placeholder="Add details"
+                  >${escapeHtml(details)}</textarea>
+                </label>
+              </div>
+            `
+          : "";
 
         return `
-          <div class="editor-grid editor-row editor-row-${timelineState}">
-            <input aria-label="Milestone title" data-field="title"
-              data-id="${escapeHtml(milestone.id)}"
-              value="${escapeHtml(milestone.title)}" />
-            <input aria-label="${dateInputLabel}" data-field="at"
-              data-id="${escapeHtml(milestone.id)}" type="${dateInputType}"
-              value="${escapeHtml(dateInputValue)}" />
-            <div class="owner-cell">
-              ${renderOwnerPickerButton(milestone)}
+          <div class="milestone-editor-item editor-row-${timelineState}">
+            <div class="editor-grid editor-row">
+              <input aria-label="Milestone title" data-field="title"
+                data-id="${escapeHtml(milestone.id)}"
+                value="${escapeHtml(milestone.title)}" />
+              <input aria-label="${dateInputLabel}" data-field="at"
+                data-id="${escapeHtml(milestone.id)}" type="${dateInputType}"
+                value="${escapeHtml(dateInputValue)}" />
+              <div class="owner-cell">
+                ${renderOwnerPickerButton(milestone)}
+              </div>
+              <select aria-label="Milestone status" data-field="status"
+                data-id="${escapeHtml(milestone.id)}">
+                <option value="pending" ${
+                  milestone.status === "pending" ? "selected" : ""
+                }>Pending</option>
+                <option value="completed" ${
+                  milestone.status === "completed" ? "selected" : ""
+                }>Completed</option>
+              </select>
+              <span class="state-pill state-pill-${timelineState}">
+                ${stateLabel(timelineState)}
+              </span>
+              <div class="row-actions">
+                <button
+                  aria-expanded="${isDetailsExpanded ? "true" : "false"}"
+                  class="details-toggle-button"
+                  data-action="toggle-details-row"
+                  data-id="${escapeHtml(milestone.id)}"
+                  type="button"
+                >
+                  ${escapeHtml(isDetailsExpanded ? "Hide" : detailsLabel)}
+                </button>
+                <button class="remove-button" data-action="remove"
+                  data-id="${escapeHtml(milestone.id)}" type="button">
+                  Remove
+                </button>
+              </div>
             </div>
-            <select aria-label="Milestone status" data-field="status"
-              data-id="${escapeHtml(milestone.id)}">
-              <option value="pending" ${
-                milestone.status === "pending" ? "selected" : ""
-              }>Pending</option>
-              <option value="completed" ${
-                milestone.status === "completed" ? "selected" : ""
-              }>Completed</option>
-            </select>
-            <span class="state-pill state-pill-${timelineState}">
-              ${stateLabel(timelineState)}
-            </span>
-            <button class="remove-button" data-action="remove"
-              data-id="${escapeHtml(milestone.id)}" type="button">
-              Remove
-            </button>
+            ${detailsPanelMarkup}
           </div>
         `;
       })
@@ -1875,6 +1993,7 @@
     renderRows(asOfDate);
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
+    renderDetailsPopoverLayer();
   }
 
   function updateMilestone(id, field, value, redrawRows) {
@@ -1891,8 +2010,9 @@
 
     if (redrawRows) {
       render();
-    } else {
+    } else if (field !== "details") {
       renderTimelineAndCounts();
+      renderDetailsPopoverLayer();
     }
   }
 
@@ -2082,6 +2202,7 @@
       id: makeId(),
       title: "New milestone",
       at: toDateValueForMode(nextDate, state.includeTimes),
+      details: "",
       ownerId: "",
       status: "pending",
     });
@@ -2098,6 +2219,7 @@
       id: makeId(),
       title: "New milestone",
       at: toDateValueForMode(date, state.includeTimes),
+      details: "",
       ownerId: "",
       status: "pending",
     });
@@ -2326,20 +2448,28 @@
     statusMenuPosition = positionFloatingMenu(target, 190, 96);
   }
 
+  function positionDetailsPopover(target) {
+    detailsPopoverPosition = positionFloatingMenu(target, 340, 238);
+  }
+
   function closeFloatingMenus() {
+    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
     statusMenuMilestoneId = "";
+    renderDetailsPopoverLayer();
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
   }
 
   function assignOwner(milestoneId, personId) {
+    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
     statusMenuMilestoneId = "";
     updateMilestone(milestoneId, "ownerId", personId, true);
   }
 
   function assignStatus(milestoneId, status) {
+    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
     statusMenuMilestoneId = "";
     updateMilestone(
@@ -2352,6 +2482,7 @@
 
   function toggleOwnerMenu(milestoneId, target) {
     closeTitleEditor(false);
+    detailsPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     ownerMenuMilestoneId =
       ownerMenuMilestoneId === milestoneId ? "" : milestoneId;
@@ -2362,10 +2493,12 @@
 
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
+    renderDetailsPopoverLayer();
   }
 
   function openStatusMenu(milestoneId, target) {
     closeTitleEditor(false);
+    detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
     statusMenuMilestoneId =
       statusMenuMilestoneId === milestoneId ? "" : milestoneId;
@@ -2376,6 +2509,29 @@
 
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
+    renderDetailsPopoverLayer();
+  }
+
+  function toggleDetailsRow(milestoneId) {
+    expandedDetailsMilestoneId =
+      expandedDetailsMilestoneId === milestoneId ? "" : milestoneId;
+    renderRows(parseDateValue(state.asOf, state.includeTimes));
+  }
+
+  function toggleDetailsPopover(milestoneId, target) {
+    closeTitleEditor(false);
+    ownerMenuMilestoneId = "";
+    statusMenuMilestoneId = "";
+    detailsPopoverMilestoneId =
+      detailsPopoverMilestoneId === milestoneId ? "" : milestoneId;
+
+    if (detailsPopoverMilestoneId) {
+      positionDetailsPopover(target);
+    }
+
+    renderOwnerMenuLayer();
+    renderStatusMenuLayer();
+    renderDetailsPopoverLayer();
   }
 
   function closeTitleEditor(saveChanges) {
@@ -2578,6 +2734,16 @@
       return;
     }
 
+    const detailsTarget = closestMatch(
+      event.target,
+      '[data-action="toggle-details-popover"]',
+    );
+
+    if (detailsTarget) {
+      toggleDetailsPopover(detailsTarget.dataset.id, detailsTarget);
+      return;
+    }
+
     const titleTarget = closestMatch(event.target, '[data-action="edit-title"]');
 
     if (titleTarget) {
@@ -2596,9 +2762,7 @@
   });
 
   elements.timelineMount.addEventListener("mousemove", function (event) {
-    if (
-      closestMatch(event.target, '[data-action="create-milestone-at"]')
-    ) {
+    if (closestMatch(event.target, '[data-action="create-milestone-at"]')) {
       return;
     }
 
@@ -2652,7 +2816,7 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "title" || field === "at") {
+    if (field === "title" || field === "at" || field === "details") {
       updateMilestone(id, field, event.target.value, false);
     }
   });
@@ -2667,6 +2831,16 @@
   });
 
   elements.milestoneRows.addEventListener("click", function (event) {
+    const detailsButton = closestMatch(
+      event.target,
+      '[data-action="toggle-details-row"]',
+    );
+
+    if (detailsButton) {
+      toggleDetailsRow(detailsButton.dataset.id);
+      return;
+    }
+
     const ownerButton = closestMatch(
       event.target,
       '[data-action="toggle-owner-menu"]',
@@ -2678,10 +2852,39 @@
     }
 
     if (event.target.dataset.action === "remove") {
+      if (expandedDetailsMilestoneId === event.target.dataset.id) {
+        expandedDetailsMilestoneId = "";
+      }
+
+      if (detailsPopoverMilestoneId === event.target.dataset.id) {
+        detailsPopoverMilestoneId = "";
+      }
+
       state.milestones = state.milestones.filter(function (milestone) {
         return milestone.id !== event.target.dataset.id;
       });
       saveAndRender();
+    }
+  });
+
+  elements.detailsPopoverLayer.addEventListener("input", function (event) {
+    const field = event.target.dataset.field;
+    const id = event.target.dataset.id;
+
+    if (field === "details") {
+      updateMilestone(id, field, event.target.value, false);
+    }
+  });
+
+  elements.detailsPopoverLayer.addEventListener("click", function (event) {
+    const actionTarget = closestMatch(event.target, "[data-action]");
+
+    if (
+      actionTarget &&
+      actionTarget.dataset.action === "close-details-popover"
+    ) {
+      detailsPopoverMilestoneId = "";
+      renderDetailsPopoverLayer();
     }
   });
 
@@ -2802,9 +3005,13 @@
 
     document.addEventListener("click", function (event) {
       if (
-        (!ownerMenuMilestoneId && !statusMenuMilestoneId) ||
+        (!ownerMenuMilestoneId &&
+          !statusMenuMilestoneId &&
+          !detailsPopoverMilestoneId) ||
+        closestMatch(event.target, ".details-popover-panel") ||
         closestMatch(event.target, ".owner-menu-panel") ||
         closestMatch(event.target, ".status-menu-panel") ||
+        closestMatch(event.target, '[data-action="toggle-details-popover"]') ||
         closestMatch(event.target, '[data-action="toggle-owner-menu"]') ||
         closestMatch(event.target, '[data-action="drag-date"]')
       ) {
