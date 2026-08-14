@@ -46,6 +46,7 @@
     personPhotoInput: document.querySelector("#personPhotoInput"),
     personPhotoPreview: document.querySelector("#personPhotoPreview"),
     resetButton: document.querySelector("#resetButton"),
+    riskPopoverLayer: document.querySelector("#riskPopoverLayer"),
     showTodayInput: document.querySelector("#showTodayInput"),
     sortButton: document.querySelector("#sortButton"),
     statusMenuLayer: document.querySelector("#statusMenuLayer"),
@@ -69,11 +70,15 @@
   let detailsPopoverMilestoneId = "";
   let detailsPopoverPosition = { left: 0, top: 0 };
   let expandedDetailsMilestoneId = "";
+  let expandedRiskHistoryKey = "";
+  let expandedRisksMilestoneId = "";
   let timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
   let ownerMenuMilestoneId = "";
   let ownerMenuPosition = { left: 0, top: 0 };
   let personDialogContext = null;
   let pendingPersonPhotoDataUrl = "";
+  let riskPopoverMilestoneId = "";
+  let riskPopoverPosition = { left: 0, top: 0 };
   let statusMenuMilestoneId = "";
   let statusMenuPosition = { left: 0, top: 0 };
 
@@ -148,6 +153,32 @@
     return date;
   }
 
+  function createRiskHistoryEntry(message) {
+    return {
+      id: makeId(),
+      at: new Date().toISOString(),
+      message: message,
+    };
+  }
+
+  function createRisk(title, ownerId, status, historyMessages) {
+    const normalizedStatus = status === "resolved" ? "resolved" : "open";
+    const messages =
+      Array.isArray(historyMessages) && historyMessages.length > 0
+        ? historyMessages
+        : ["Created risk"];
+
+    return {
+      id: makeId(),
+      title: title || "New risk",
+      ownerId: ownerId || "",
+      status: normalizedStatus,
+      history: messages.map(function (message) {
+        return createRiskHistoryEntry(message);
+      }),
+    };
+  }
+
   function createExamplePeople() {
     return [
       {
@@ -191,6 +222,7 @@
         at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
         details: "Scope, success metrics, and kickoff owners are confirmed.",
         ownerId: "person-ari-chen",
+        risks: [],
         status: "completed",
       },
       {
@@ -199,6 +231,14 @@
         at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
         details: "Reporting inputs are locked before final validation starts.",
         ownerId: "person-maya-patel",
+        risks: [
+          createRisk(
+            "Late source changes could reopen the freeze.",
+            "person-maya-patel",
+            "resolved",
+            ["Created risk", "Marked mitigated"],
+          ),
+        ],
         status: "completed",
       },
       {
@@ -207,6 +247,13 @@
         at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
         details: "Review flow, edge states, and launch-readiness notes.",
         ownerId: "person-jon-bell",
+        risks: [
+          createRisk(
+            "Accessibility pass may need another review cycle.",
+            "person-jon-bell",
+            "open",
+          ),
+        ],
         status: "pending",
       },
       {
@@ -215,6 +262,7 @@
         at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
         details: "Invite pilot users and monitor feedback during the first week.",
         ownerId: "person-sam-rivera",
+        risks: [],
         status: "pending",
       },
       {
@@ -223,6 +271,7 @@
         at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
         details: "Publish the release package and announce availability.",
         ownerId: "person-nina-park",
+        risks: [],
         status: "pending",
       },
     ];
@@ -353,6 +402,84 @@
     });
   }
 
+  function normalizeRiskHistory(candidates) {
+    const entries = Array.isArray(candidates)
+      ? candidates
+          .map(function (entry, index) {
+            if (!entry || typeof entry !== "object") {
+              return null;
+            }
+
+            const message =
+              typeof entry.message === "string"
+                ? entry.message
+                : typeof entry.text === "string"
+                  ? entry.text
+                  : "";
+
+            if (!message.trim()) {
+              return null;
+            }
+
+            return {
+              id:
+                typeof entry.id === "string" && entry.id.trim()
+                  ? entry.id
+                  : `risk-history-${index}-${makeId()}`,
+              at:
+                typeof entry.at === "string" && entry.at.trim()
+                  ? entry.at
+                  : new Date().toISOString(),
+              message: message,
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+    return entries.length > 0
+      ? entries
+      : [createRiskHistoryEntry("Imported risk")];
+  }
+
+  function normalizeRisk(candidate, index, people) {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+
+    let ownerId =
+      typeof candidate.ownerId === "string" && candidate.ownerId.trim()
+        ? candidate.ownerId.trim()
+        : "";
+
+    if (ownerId && !personExists(people, ownerId)) {
+      ownerId = "";
+    }
+
+    return {
+      id:
+        typeof candidate.id === "string" && candidate.id.trim()
+          ? candidate.id
+          : `risk-${index}-${makeId()}`,
+      title: typeof candidate.title === "string" ? candidate.title : "",
+      ownerId: ownerId,
+      status:
+        candidate.status === "resolved" || candidate.status === "mitigated"
+          ? "resolved"
+          : "open",
+      history: normalizeRiskHistory(candidate.history),
+    };
+  }
+
+  function normalizeRisks(candidates, people) {
+    return Array.isArray(candidates)
+      ? candidates
+          .map(function (risk, index) {
+            return normalizeRisk(risk, index, people);
+          })
+          .filter(Boolean)
+      : [];
+  }
+
   function normalizeMilestone(candidate, index, people) {
     if (!candidate || typeof candidate !== "object") {
       return null;
@@ -399,13 +526,30 @@
       details:
         typeof candidate.details === "string" ? candidate.details : "",
       ownerId: ownerId,
+      risks: normalizeRisks(candidate.risks, people),
       status: candidate.status === "completed" ? "completed" : "pending",
     };
   }
 
+  function cloneRisks(risks) {
+    return Array.isArray(risks)
+      ? risks.map(function (risk) {
+          return Object.assign({}, risk, {
+            history: Array.isArray(risk.history)
+              ? risk.history.map(function (entry) {
+                  return Object.assign({}, entry);
+                })
+              : [],
+          });
+        })
+      : [];
+  }
+
   function cloneMilestones(milestones) {
     return milestones.map(function (milestone) {
-      return Object.assign({}, milestone);
+      return Object.assign({}, milestone, {
+        risks: cloneRisks(milestone.risks),
+      });
     });
   }
 
@@ -606,7 +750,7 @@
           people: state.people,
           sidebarCollapsed: state.sidebarCollapsed,
           timelines: state.timelines,
-          version: 4,
+          version: 5,
         }),
       );
     } catch (_error) {
@@ -1299,6 +1443,15 @@
     };
   }
 
+  function riskIconPosition(point) {
+    const ownerDirection = point.labelX > CHART_WIDTH - 80 ? -1 : 1;
+
+    return {
+      x: point.labelX - ownerDirection * (LABEL_BADGE_RADIUS + 14 + 8),
+      y: point.y,
+    };
+  }
+
   function renderSvgOwnerAvatar(layout, index) {
     const point = layout.point;
     const hasOwner = shouldRenderOwnerAvatar(point);
@@ -1360,6 +1513,51 @@
       <circle cx="${avatar.x}" cy="${avatar.y}" fill="#ffffff"
         r="${AVATAR_RADIUS + 4}" />
     `;
+  }
+
+  function renderSvgRiskIndicator(layout) {
+    const point = layout.point;
+    const summary = layout.riskSummary;
+    const icon = riskIconPosition(point);
+    const label = riskSummaryLabel(summary);
+    let indicatorMarkup;
+
+    if (summary.total === 0) {
+      indicatorMarkup = `
+        <circle fill="#f8fafc" r="12" stroke="#cbd5e1" stroke-width="2" />
+        <text fill="#475569" font-size="16" font-weight="950"
+          text-anchor="middle" x="0" y="5">+</text>
+      `;
+    } else if (summary.unresolved > 0) {
+      indicatorMarkup = `
+        <circle fill="#fef3c7" r="12" stroke="#d97706" stroke-width="2" />
+        <text fill="#7c2d12" font-size="12" font-weight="950"
+          text-anchor="middle" x="0" y="4">${escapeHtml(
+            summary.unresolved > 9 ? "!" : summary.unresolved,
+          )}</text>
+      `;
+    } else {
+      indicatorMarkup = `
+        <circle fill="#dcfce7" r="12" stroke="#16a34a" stroke-width="2" />
+        <path d="M -5 0 L -1 4 L 6 -5" fill="none" stroke="#15803d"
+          stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" />
+      `;
+    }
+
+    return `
+      <g aria-label="${escapeHtml(label)}" class="timeline-risk-action"
+        data-action="toggle-risk-popover" data-id="${escapeHtml(point.id)}"
+        role="button" tabindex="0" transform="translate(${icon.x} ${icon.y})">
+        <title>${escapeHtml(label)}</title>
+        ${indicatorMarkup}
+      </g>
+    `;
+  }
+
+  function renderSvgRiskIndicatorMask(layout) {
+    const icon = riskIconPosition(layout.point);
+
+    return `<circle cx="${icon.x}" cy="${icon.y}" fill="#ffffff" r="15" />`;
   }
 
   function renderChart(model, showMarker) {
@@ -1454,6 +1652,7 @@
           detailsIconSide === 1 ? point.labelRight + 14 : point.labelLeft - 14;
         const detailsIconY = labelRectY + 24;
         const hasDetails = Boolean(String(point.details || "").trim());
+        const summary = riskSummary(point);
         const connectorColor =
           point.timelineState === "overdue" ? "#d97706" : "#94a3b8";
         const connectorWidth = point.timelineState === "overdue" ? 3 : 2;
@@ -1480,6 +1679,7 @@
           labelRectY: labelRectY,
           markerMaskRadius: markerMaskRadius,
           point: point,
+          riskSummary: summary,
           style: style,
           title: title,
           titleY: titleY,
@@ -1509,6 +1709,7 @@
           ${renderSvgOwnerAvatarMask(layout)}
           <circle cx="${layout.detailsIconX}" cy="${layout.detailsIconY}"
             fill="#ffffff" r="15" />
+          ${renderSvgRiskIndicatorMask(layout)}
           <rect fill="#ffffff" height="48" rx="7"
             width="${point.labelWidth}" x="${point.labelLeft}"
             y="${layout.labelRectY}" />
@@ -1556,6 +1757,7 @@
                 font-size="15" font-weight="950" text-anchor="middle"
                 x="0" y="5">i</text>
             </g>
+            ${renderSvgRiskIndicator(layout)}
             <text fill="#64748b" font-size="15" font-weight="600"
               text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
           </g>
@@ -1613,6 +1815,61 @@
     });
   }
 
+  function milestoneRisks(milestone) {
+    return Array.isArray(milestone.risks) ? milestone.risks : [];
+  }
+
+  function riskSummary(milestone) {
+    const risks = milestoneRisks(milestone);
+    const unresolved = risks.filter(function (risk) {
+      return risk.status !== "resolved";
+    }).length;
+
+    return {
+      resolved: risks.length - unresolved,
+      state:
+        risks.length === 0 ? "none" : unresolved > 0 ? "open" : "resolved",
+      total: risks.length,
+      unresolved: unresolved,
+    };
+  }
+
+  function riskSummaryLabel(summary) {
+    if (summary.total === 0) {
+      return "No risks";
+    }
+
+    if (summary.unresolved > 0) {
+      return `${summary.unresolved} unresolved`;
+    }
+
+    return "All mitigated";
+  }
+
+  function riskButtonLabel(summary) {
+    return summary.total > 0 ? `Risks ${summary.total}` : "Risks";
+  }
+
+  function riskHistoryKey(milestoneId, riskId) {
+    return `${milestoneId}:${riskId}`;
+  }
+
+  function formatHistoryTime(value) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown time";
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(date);
+  }
+
   function stateLabel(timelineState) {
     if (timelineState === "completed") {
       return "Complete";
@@ -1631,6 +1888,138 @@
         return person.id === personId;
       }) || null
     );
+  }
+
+  function renderRiskOwnerOptions(risk) {
+    const personOptions = state.people
+      .map(function (person) {
+        return `
+          <option value="${escapeHtml(person.id)}" ${
+            person.id === risk.ownerId ? "selected" : ""
+          }>
+            ${escapeHtml(ownerLabel(person) || "Unnamed person")}
+          </option>
+        `;
+      })
+      .join("");
+
+    return `
+      <option value="" ${risk.ownerId ? "" : "selected"}>No owner</option>
+      ${personOptions}
+      <option value="__add_person">Add person...</option>
+    `;
+  }
+
+  function renderRiskHistory(milestoneId, risk) {
+    if (expandedRiskHistoryKey !== riskHistoryKey(milestoneId, risk.id)) {
+      return "";
+    }
+
+    const history = Array.isArray(risk.history) ? risk.history : [];
+
+    return `
+      <ol class="risk-history-list">
+        ${history
+          .slice()
+          .reverse()
+          .map(function (entry) {
+            return `
+              <li>
+                <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                <span>${escapeHtml(entry.message)}</span>
+              </li>
+            `;
+          })
+          .join("")}
+      </ol>
+    `;
+  }
+
+  function renderRiskControls(milestone, context) {
+    const summary = riskSummary(milestone);
+    const risks = milestoneRisks(milestone);
+    const emptyMarkup =
+      risks.length === 0
+        ? '<p class="risk-empty">No risks yet.</p>'
+        : "";
+
+    return `
+      <div class="risk-controls risk-controls-${context}">
+        <div class="risk-controls-header">
+          <span class="risk-summary risk-summary-${summary.state}">
+            <span class="risk-summary-dot" aria-hidden="true"></span>
+            ${escapeHtml(riskSummaryLabel(summary))}
+          </span>
+          <button
+            class="add-risk-button"
+            data-action="add-risk"
+            data-id="${escapeHtml(milestone.id)}"
+            type="button"
+          >
+            + Add risk
+          </button>
+        </div>
+        ${emptyMarkup}
+        <div class="risk-list">
+          ${risks
+            .map(function (risk) {
+              const historyCount = Array.isArray(risk.history)
+                ? risk.history.length
+                : 0;
+              const isHistoryExpanded =
+                expandedRiskHistoryKey === riskHistoryKey(milestone.id, risk.id);
+
+              return `
+                <div class="risk-item risk-item-${risk.status}">
+                  <div class="risk-item-grid">
+                    <input
+                      aria-label="Risk title"
+                      data-action="risk-title"
+                      data-id="${escapeHtml(milestone.id)}"
+                      data-original="${escapeHtml(risk.title)}"
+                      data-risk-id="${escapeHtml(risk.id)}"
+                      value="${escapeHtml(risk.title)}"
+                    />
+                    <select
+                      aria-label="Risk owner"
+                      data-action="set-risk-owner"
+                      data-id="${escapeHtml(milestone.id)}"
+                      data-risk-id="${escapeHtml(risk.id)}"
+                    >
+                      ${renderRiskOwnerOptions(risk)}
+                    </select>
+                    <select
+                      aria-label="Risk status"
+                      data-action="set-risk-status"
+                      data-id="${escapeHtml(milestone.id)}"
+                      data-risk-id="${escapeHtml(risk.id)}"
+                    >
+                      <option value="open" ${
+                        risk.status === "open" ? "selected" : ""
+                      }>Open</option>
+                      <option value="resolved" ${
+                        risk.status === "resolved" ? "selected" : ""
+                      }>Mitigated</option>
+                    </select>
+                    <button
+                      aria-expanded="${isHistoryExpanded ? "true" : "false"}"
+                      class="risk-history-toggle"
+                      data-action="toggle-risk-history"
+                      data-id="${escapeHtml(milestone.id)}"
+                      data-risk-id="${escapeHtml(risk.id)}"
+                      type="button"
+                    >
+                      History ${historyCount}
+                    </button>
+                  </div>
+                  ${renderRiskHistory(milestone.id, risk)}
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
   }
 
   function renderTimelineList() {
@@ -1869,6 +2258,51 @@
     `;
   }
 
+  function renderRiskPopoverLayer() {
+    if (!riskPopoverMilestoneId) {
+      elements.riskPopoverLayer.innerHTML = "";
+      return;
+    }
+
+    const milestone = state.milestones.find(function (candidate) {
+      return candidate.id === riskPopoverMilestoneId;
+    });
+
+    if (!milestone) {
+      riskPopoverMilestoneId = "";
+      elements.riskPopoverLayer.innerHTML = "";
+      return;
+    }
+
+    const date = parseDateValue(milestone.at, state.includeTimes);
+    const dateLabel = date
+      ? formatMilestoneDate(date, state.includeTimes)
+      : "No date";
+
+    elements.riskPopoverLayer.innerHTML = `
+      <div
+        class="risk-popover-panel"
+        style="left: ${riskPopoverPosition.left}px; top: ${riskPopoverPosition.top}px;"
+      >
+        <div class="risk-popover-header">
+          <div class="risk-popover-title">
+            <strong>${escapeHtml(milestone.title || "Untitled milestone")}</strong>
+            <span>${escapeHtml(dateLabel)}</span>
+          </div>
+          <button
+            aria-label="Close risks"
+            class="icon-button risk-popover-close"
+            data-action="close-risk-popover"
+            type="button"
+          >
+            &times;
+          </button>
+        </div>
+        ${renderRiskControls(milestone, "popover")}
+      </div>
+    `;
+  }
+
   function renderRows(asOfDate) {
     elements.milestoneRows.innerHTML = state.milestones
       .map(function (milestone) {
@@ -1882,10 +2316,12 @@
         const dateInputType = state.includeTimes ? "datetime-local" : "date";
         const dateInputValue = toInputValue(milestone.at, state.includeTimes);
         const isDetailsExpanded = expandedDetailsMilestoneId === milestone.id;
+        const isRisksExpanded = expandedRisksMilestoneId === milestone.id;
         const details = String(milestone.details || "");
         const detailsLabel = details.trim()
           ? "Details"
           : "Add details";
+        const summary = riskSummary(milestone);
         const detailsPanelMarkup = isDetailsExpanded
           ? `
               <div class="milestone-details-panel">
@@ -1898,6 +2334,13 @@
                     placeholder="Add details"
                   >${escapeHtml(details)}</textarea>
                 </label>
+              </div>
+            `
+          : "";
+        const risksPanelMarkup = isRisksExpanded
+          ? `
+              <div class="milestone-risks-panel">
+                ${renderRiskControls(milestone, "row")}
               </div>
             `
           : "";
@@ -1936,6 +2379,15 @@
                 >
                   ${escapeHtml(isDetailsExpanded ? "Hide" : detailsLabel)}
                 </button>
+                <button
+                  aria-expanded="${isRisksExpanded ? "true" : "false"}"
+                  class="risks-toggle-button risks-toggle-${summary.state}"
+                  data-action="toggle-risks-row"
+                  data-id="${escapeHtml(milestone.id)}"
+                  type="button"
+                >
+                  ${escapeHtml(isRisksExpanded ? "Hide" : riskButtonLabel(summary))}
+                </button>
                 <button class="remove-button" data-action="remove"
                   data-id="${escapeHtml(milestone.id)}" type="button">
                   Remove
@@ -1943,6 +2395,7 @@
               </div>
             </div>
             ${detailsPanelMarkup}
+            ${risksPanelMarkup}
           </div>
         `;
       })
@@ -1994,6 +2447,7 @@
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
     renderDetailsPopoverLayer();
+    renderRiskPopoverLayer();
   }
 
   function updateMilestone(id, field, value, redrawRows) {
@@ -2109,9 +2563,12 @@
   }
 
   function openPersonDialog(assignToMilestoneId) {
-    personDialogContext = {
-      assignToMilestoneId: assignToMilestoneId || "",
-    };
+    personDialogContext =
+      assignToMilestoneId && typeof assignToMilestoneId === "object"
+        ? assignToMilestoneId
+        : {
+            assignToMilestoneId: assignToMilestoneId || "",
+          };
     pendingPersonPhotoDataUrl = "";
     elements.personNameInput.value = "";
     elements.personEmailInput.value = "";
@@ -2178,6 +2635,25 @@
       });
     }
 
+    if (
+      personDialogContext &&
+      personDialogContext.assignToRiskMilestoneId &&
+      personDialogContext.assignToRiskId
+    ) {
+      const risk = findRisk(
+        personDialogContext.assignToRiskMilestoneId,
+        personDialogContext.assignToRiskId,
+      );
+
+      if (risk && risk.ownerId !== person.id) {
+        risk.ownerId = person.id;
+        appendRiskHistory(
+          risk,
+          `Assigned owner to ${ownerHistoryLabel(person.id)}`,
+        );
+      }
+    }
+
     ownerMenuMilestoneId = "";
     closePersonDialog();
     saveAndRender();
@@ -2204,6 +2680,7 @@
       at: toDateValueForMode(nextDate, state.includeTimes),
       details: "",
       ownerId: "",
+      risks: [],
       status: "pending",
     });
     saveAndRender();
@@ -2221,6 +2698,7 @@
       at: toDateValueForMode(date, state.includeTimes),
       details: "",
       ownerId: "",
+      risks: [],
       status: "pending",
     });
     timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
@@ -2452,18 +2930,134 @@
     detailsPopoverPosition = positionFloatingMenu(target, 340, 238);
   }
 
+  function positionRiskPopover(target) {
+    riskPopoverPosition = positionFloatingMenu(target, 440, 420);
+  }
+
+  function findMilestone(milestoneId) {
+    return state.milestones.find(function (milestone) {
+      return milestone.id === milestoneId;
+    });
+  }
+
+  function findRisk(milestoneId, riskId) {
+    const milestone = findMilestone(milestoneId);
+
+    if (!milestone) {
+      return null;
+    }
+
+    return milestoneRisks(milestone).find(function (risk) {
+      return risk.id === riskId;
+    }) || null;
+  }
+
+  function appendRiskHistory(risk, message) {
+    risk.history = Array.isArray(risk.history) ? risk.history : [];
+    risk.history.push(createRiskHistoryEntry(message));
+  }
+
+  function ownerHistoryLabel(personId) {
+    const person = getPersonById(personId);
+
+    return person ? ownerLabel(person) || "Unnamed person" : "No owner";
+  }
+
+  function rerenderRisks() {
+    saveState();
+    renderTimelineAndCounts();
+    renderRows(parseDateValue(state.asOf, state.includeTimes));
+    renderRiskPopoverLayer();
+  }
+
+  function addRisk(milestoneId) {
+    const milestone = findMilestone(milestoneId);
+
+    if (!milestone) {
+      return;
+    }
+
+    milestone.risks = milestoneRisks(milestone).concat([
+      createRisk("New risk", "", "open"),
+    ]);
+    expandedRisksMilestoneId = milestoneId;
+    rerenderRisks();
+  }
+
+  function updateRiskTitleDraft(milestoneId, riskId, title) {
+    const risk = findRisk(milestoneId, riskId);
+
+    if (!risk) {
+      return;
+    }
+
+    risk.title = title;
+    saveState();
+  }
+
+  function recordRiskTitleChange(milestoneId, riskId, previousTitle, title) {
+    const risk = findRisk(milestoneId, riskId);
+    const from = String(previousTitle || "").trim() || "Untitled risk";
+    const to = String(title || "").trim() || "Untitled risk";
+
+    if (!risk || from === to) {
+      return;
+    }
+
+    risk.title = title;
+    appendRiskHistory(risk, `Renamed risk from "${from}" to "${to}"`);
+    rerenderRisks();
+  }
+
+  function setRiskStatus(milestoneId, riskId, status) {
+    const risk = findRisk(milestoneId, riskId);
+    const nextStatus = status === "resolved" ? "resolved" : "open";
+
+    if (!risk || risk.status === nextStatus) {
+      return;
+    }
+
+    risk.status = nextStatus;
+    appendRiskHistory(
+      risk,
+      nextStatus === "resolved" ? "Marked mitigated" : "Reopened risk",
+    );
+    rerenderRisks();
+  }
+
+  function setRiskOwner(milestoneId, riskId, personId) {
+    const risk = findRisk(milestoneId, riskId);
+    const nextPersonId = personId || "";
+
+    if (!risk || risk.ownerId === nextPersonId) {
+      return;
+    }
+
+    risk.ownerId = nextPersonId;
+    appendRiskHistory(
+      risk,
+      nextPersonId
+        ? `Assigned owner to ${ownerHistoryLabel(nextPersonId)}`
+        : "Cleared owner",
+    );
+    rerenderRisks();
+  }
+
   function closeFloatingMenus() {
     detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
+    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     renderDetailsPopoverLayer();
     renderOwnerMenuLayer();
+    renderRiskPopoverLayer();
     renderStatusMenuLayer();
   }
 
   function assignOwner(milestoneId, personId) {
     detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
+    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     updateMilestone(milestoneId, "ownerId", personId, true);
   }
@@ -2471,6 +3065,7 @@
   function assignStatus(milestoneId, status) {
     detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
+    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     updateMilestone(
       milestoneId,
@@ -2483,6 +3078,7 @@
   function toggleOwnerMenu(milestoneId, target) {
     closeTitleEditor(false);
     detailsPopoverMilestoneId = "";
+    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     ownerMenuMilestoneId =
       ownerMenuMilestoneId === milestoneId ? "" : milestoneId;
@@ -2494,12 +3090,14 @@
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
     renderDetailsPopoverLayer();
+    renderRiskPopoverLayer();
   }
 
   function openStatusMenu(milestoneId, target) {
     closeTitleEditor(false);
     detailsPopoverMilestoneId = "";
     ownerMenuMilestoneId = "";
+    riskPopoverMilestoneId = "";
     statusMenuMilestoneId =
       statusMenuMilestoneId === milestoneId ? "" : milestoneId;
 
@@ -2510,6 +3108,7 @@
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
     renderDetailsPopoverLayer();
+    renderRiskPopoverLayer();
   }
 
   function toggleDetailsRow(milestoneId) {
@@ -2521,6 +3120,7 @@
   function toggleDetailsPopover(milestoneId, target) {
     closeTitleEditor(false);
     ownerMenuMilestoneId = "";
+    riskPopoverMilestoneId = "";
     statusMenuMilestoneId = "";
     detailsPopoverMilestoneId =
       detailsPopoverMilestoneId === milestoneId ? "" : milestoneId;
@@ -2532,6 +3132,39 @@
     renderOwnerMenuLayer();
     renderStatusMenuLayer();
     renderDetailsPopoverLayer();
+    renderRiskPopoverLayer();
+  }
+
+  function toggleRisksRow(milestoneId) {
+    expandedRisksMilestoneId =
+      expandedRisksMilestoneId === milestoneId ? "" : milestoneId;
+    renderRows(parseDateValue(state.asOf, state.includeTimes));
+  }
+
+  function toggleRiskHistory(milestoneId, riskId) {
+    const key = riskHistoryKey(milestoneId, riskId);
+
+    expandedRiskHistoryKey = expandedRiskHistoryKey === key ? "" : key;
+    renderRows(parseDateValue(state.asOf, state.includeTimes));
+    renderRiskPopoverLayer();
+  }
+
+  function toggleRiskPopover(milestoneId, target) {
+    closeTitleEditor(false);
+    detailsPopoverMilestoneId = "";
+    ownerMenuMilestoneId = "";
+    statusMenuMilestoneId = "";
+    riskPopoverMilestoneId =
+      riskPopoverMilestoneId === milestoneId ? "" : milestoneId;
+
+    if (riskPopoverMilestoneId) {
+      positionRiskPopover(target);
+    }
+
+    renderDetailsPopoverLayer();
+    renderOwnerMenuLayer();
+    renderStatusMenuLayer();
+    renderRiskPopoverLayer();
   }
 
   function closeTitleEditor(saveChanges) {
@@ -2672,6 +3305,98 @@
     renderTimelineAndCounts();
   }
 
+  function handleRiskInput(event) {
+    if (event.target.dataset.action !== "risk-title") {
+      return false;
+    }
+
+    updateRiskTitleDraft(
+      event.target.dataset.id,
+      event.target.dataset.riskId,
+      event.target.value,
+    );
+    return true;
+  }
+
+  function handleRiskChange(event) {
+    const action = event.target.dataset.action;
+
+    if (action === "risk-title") {
+      recordRiskTitleChange(
+        event.target.dataset.id,
+        event.target.dataset.riskId,
+        event.target.dataset.original,
+        event.target.value,
+      );
+      return true;
+    }
+
+    if (action === "set-risk-status") {
+      setRiskStatus(
+        event.target.dataset.id,
+        event.target.dataset.riskId,
+        event.target.value,
+      );
+      return true;
+    }
+
+    if (action === "set-risk-owner") {
+      if (event.target.value === "__add_person") {
+        const risk = findRisk(
+          event.target.dataset.id,
+          event.target.dataset.riskId,
+        );
+
+        event.target.value = risk ? risk.ownerId : "";
+        openPersonDialog({
+          assignToRiskId: event.target.dataset.riskId,
+          assignToRiskMilestoneId: event.target.dataset.id,
+        });
+        return true;
+      }
+
+      setRiskOwner(
+        event.target.dataset.id,
+        event.target.dataset.riskId,
+        event.target.value,
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  function handleRiskClick(event) {
+    const actionTarget = closestMatch(event.target, "[data-action]");
+
+    if (!actionTarget) {
+      return false;
+    }
+
+    if (actionTarget.dataset.action === "add-risk") {
+      addRisk(actionTarget.dataset.id);
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "toggle-risks-row") {
+      toggleRisksRow(actionTarget.dataset.id);
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "toggle-risk-history") {
+      toggleRiskHistory(actionTarget.dataset.id, actionTarget.dataset.riskId);
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "close-risk-popover") {
+      riskPopoverMilestoneId = "";
+      renderRiskPopoverLayer();
+      return true;
+    }
+
+    return false;
+  }
+
   elements.asOfInput.addEventListener("input", function (event) {
     state.asOf = event.target.value;
     saveAndRender();
@@ -2744,6 +3469,16 @@
       return;
     }
 
+    const riskTarget = closestMatch(
+      event.target,
+      '[data-action="toggle-risk-popover"]',
+    );
+
+    if (riskTarget) {
+      toggleRiskPopover(riskTarget.dataset.id, riskTarget);
+      return;
+    }
+
     const titleTarget = closestMatch(event.target, '[data-action="edit-title"]');
 
     if (titleTarget) {
@@ -2813,6 +3548,10 @@
   });
 
   elements.milestoneRows.addEventListener("input", function (event) {
+    if (handleRiskInput(event)) {
+      return;
+    }
+
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
@@ -2822,6 +3561,10 @@
   });
 
   elements.milestoneRows.addEventListener("change", function (event) {
+    if (handleRiskChange(event)) {
+      return;
+    }
+
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
@@ -2831,6 +3574,10 @@
   });
 
   elements.milestoneRows.addEventListener("click", function (event) {
+    if (handleRiskClick(event)) {
+      return;
+    }
+
     const detailsButton = closestMatch(
       event.target,
       '[data-action="toggle-details-row"]',
@@ -2856,8 +3603,16 @@
         expandedDetailsMilestoneId = "";
       }
 
+      if (expandedRisksMilestoneId === event.target.dataset.id) {
+        expandedRisksMilestoneId = "";
+      }
+
       if (detailsPopoverMilestoneId === event.target.dataset.id) {
         detailsPopoverMilestoneId = "";
+      }
+
+      if (riskPopoverMilestoneId === event.target.dataset.id) {
+        riskPopoverMilestoneId = "";
       }
 
       state.milestones = state.milestones.filter(function (milestone) {
@@ -2865,6 +3620,18 @@
       });
       saveAndRender();
     }
+  });
+
+  elements.riskPopoverLayer.addEventListener("input", function (event) {
+    handleRiskInput(event);
+  });
+
+  elements.riskPopoverLayer.addEventListener("change", function (event) {
+    handleRiskChange(event);
+  });
+
+  elements.riskPopoverLayer.addEventListener("click", function (event) {
+    handleRiskClick(event);
   });
 
   elements.detailsPopoverLayer.addEventListener("input", function (event) {
@@ -3007,11 +3774,14 @@
       if (
         (!ownerMenuMilestoneId &&
           !statusMenuMilestoneId &&
-          !detailsPopoverMilestoneId) ||
+          !detailsPopoverMilestoneId &&
+          !riskPopoverMilestoneId) ||
         closestMatch(event.target, ".details-popover-panel") ||
         closestMatch(event.target, ".owner-menu-panel") ||
+        closestMatch(event.target, ".risk-popover-panel") ||
         closestMatch(event.target, ".status-menu-panel") ||
         closestMatch(event.target, '[data-action="toggle-details-popover"]') ||
+        closestMatch(event.target, '[data-action="toggle-risk-popover"]') ||
         closestMatch(event.target, '[data-action="toggle-owner-menu"]') ||
         closestMatch(event.target, '[data-action="drag-date"]')
       ) {

@@ -418,6 +418,14 @@ h1 {
   pointer-events: none;
 }
 
+.timeline-risk-action {
+  cursor: pointer;
+}
+
+.timeline-risk-action text {
+  pointer-events: none;
+}
+
 .timeline-axis-hit-target {
   cursor: copy;
 }
@@ -436,9 +444,9 @@ h1 {
 
 .editor-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 1.35fr) 180px 72px 140px 118px 132px;
+  grid-template-columns: minmax(240px, 1.35fr) 180px 72px 140px 118px 210px;
   gap: 10px;
-  min-width: 960px;
+  min-width: 1040px;
   align-items: center;
 }
 
@@ -457,7 +465,7 @@ h1 {
 }
 
 .editor-footer {
-  min-width: 960px;
+  min-width: 1040px;
   border-top: 1px solid #eef2f7;
   padding: 12px 14px 14px;
 }
@@ -536,7 +544,7 @@ h1 {
 
 .row-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -550,7 +558,25 @@ h1 {
   color: var(--teal);
 }
 
+.risks-toggle-button {
+  color: #475569;
+}
+
+.risks-toggle-open {
+  border-color: #f59e0b;
+  color: #7c2d12;
+}
+
+.risks-toggle-resolved {
+  border-color: #86efac;
+  color: #166534;
+}
+
 .milestone-details-panel {
+  padding: 0 14px 14px;
+}
+
+.milestone-risks-panel {
   padding: 0 14px 14px;
 }
 
@@ -573,7 +599,8 @@ h1 {
 .title-edit-layer,
 .owner-menu-layer,
 .status-menu-layer,
-.details-popover-layer {
+.details-popover-layer,
+.risk-popover-layer {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -743,6 +770,181 @@ h1 {
   min-height: 120px;
   font-size: 0.92rem;
   font-weight: 600;
+}
+
+.risk-popover-panel {
+  position: fixed;
+  display: grid;
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 24px));
+  overflow-y: auto;
+  gap: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 20px 46px rgb(15 23 42 / 0.18);
+  padding: 12px;
+  pointer-events: auto;
+}
+
+.risk-popover-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.risk-popover-title {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.risk-popover-title strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-popover-title span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.risk-popover-close {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  font-size: 1.15rem;
+}
+
+.risk-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.risk-summary {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.risk-summary-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.risk-summary-open .risk-summary-dot {
+  background: #d97706;
+}
+
+.risk-summary-resolved .risk-summary-dot {
+  background: #16a34a;
+}
+
+.add-risk-button {
+  min-height: 34px;
+  font-size: 0.8rem;
+}
+
+.risk-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.risk-list {
+  display: grid;
+  gap: 8px;
+}
+
+.risk-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.risk-item-open {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.risk-item-resolved {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.risk-item-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 132px 118px 104px;
+  gap: 8px;
+  align-items: center;
+}
+
+.risk-popover-panel .risk-item-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.risk-popover-panel .risk-item-grid input {
+  grid-column: 1 / -1;
+}
+
+.risk-item-grid input,
+.risk-item-grid select,
+.risk-item-grid button {
+  min-height: 36px;
+  font-size: 0.82rem;
+}
+
+.risk-history-toggle {
+  padding: 0 8px;
+}
+
+.risk-history-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-history-list li {
+  display: grid;
+  gap: 2px;
+  border-left: 3px solid #cbd5e1;
+  padding-left: 9px;
+}
+
+.risk-history-list time {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.risk-history-list span {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .upload-button {
@@ -924,5 +1126,19 @@ h1 {
   .control-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .risk-controls-header,
+  .risk-item-grid,
+  .risk-popover-panel .risk-item-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-controls-header {
+    display: grid;
+  }
+
+  .risk-popover-panel .risk-item-grid input {
+    grid-column: auto;
   }
 }
