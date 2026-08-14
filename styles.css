@@ -432,6 +432,10 @@ h1 {
   pointer-events: none;
 }
 
+.timeline-owner-avatar {
+  pointer-events: none;
+}
+
 .timeline-axis-hit-target {
   cursor: copy;
 }

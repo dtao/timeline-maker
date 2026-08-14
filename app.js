@@ -1462,6 +1462,76 @@
     `;
   }
 
+  function ownerAvatarPosition(point) {
+    return {
+      x: point.labelX - LABEL_BADGE_RADIUS - AVATAR_RADIUS - 6,
+      y: point.y,
+    };
+  }
+
+  function renderTimelineOwnerAvatar(layout, index) {
+    const point = layout.point;
+
+    if (!shouldRenderOwnerAvatar(point)) {
+      return "";
+    }
+
+    const avatar = ownerAvatarPosition(point);
+    const avatarSrc = ownerAvatarSrc(point);
+    const clipId = `timelineOwnerAvatar${index}`;
+    const initials = escapeHtml(ownerInitials(point));
+    const owner = escapeHtml(ownerLabel(point) || "Owner");
+    let avatarMarkup;
+
+    if (avatarSrc) {
+      avatarMarkup = `
+        <defs>
+          <clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">
+            <circle cx="${avatar.x}" cy="${avatar.y}" r="${AVATAR_RADIUS}" />
+          </clipPath>
+        </defs>
+        <image href="${escapeHtml(avatarSrc)}"
+          x="${avatar.x - AVATAR_RADIUS}" y="${avatar.y - AVATAR_RADIUS}"
+          width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"
+          preserveAspectRatio="xMidYMid slice"
+          clip-path="url(#${clipId})" />
+      `;
+    } else {
+      avatarMarkup = `
+        <circle cx="${avatar.x}" cy="${avatar.y}"
+          fill="${ownerAvatarColor(point)}" r="${AVATAR_RADIUS}" />
+        <text fill="#ffffff" font-size="11" font-weight="900"
+          text-anchor="middle" x="${avatar.x}" y="${avatar.y + 4}">${initials}</text>
+      `;
+    }
+
+    return `
+      <g aria-label="${owner}" class="timeline-owner-avatar" role="img">
+        <title>${owner}</title>
+        ${avatarMarkup}
+        <circle cx="${avatar.x}" cy="${avatar.y}" fill="none"
+          r="${AVATAR_RADIUS}" stroke="#ffffff" stroke-width="3" />
+        <circle cx="${avatar.x}" cy="${avatar.y}" fill="none"
+          r="${AVATAR_RADIUS}" stroke="#475569" stroke-width="1" />
+      </g>
+    `;
+  }
+
+  function renderTimelineOwnerAvatarMask(layout) {
+    const point = layout.point;
+
+    if (!shouldRenderOwnerAvatar(point)) {
+      return "";
+    }
+
+    const avatar = ownerAvatarPosition(point);
+
+    return `
+      <circle cx="${avatar.x}" cy="${avatar.y}" fill="#ffffff"
+        r="${AVATAR_RADIUS + 4}" />
+    `;
+  }
+
   function renderChart(model, showMarker) {
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
@@ -1623,6 +1693,7 @@
               : `<circle cx="${layout.riskDotX}" cy="${layout.riskDotY}"
                   fill="#ffffff" r="10" />`
           }
+          ${renderTimelineOwnerAvatarMask(layout)}
           <rect fill="#ffffff" height="48" rx="7"
             width="${point.labelWidth}" x="${point.labelLeft}"
             y="${layout.labelRectY}" />
@@ -1630,7 +1701,7 @@
       })
       .join("");
     const pointMarkup = pointLayouts
-      .map(function (layout) {
+      .map(function (layout, index) {
         const point = layout.point;
 
         return `
@@ -1651,6 +1722,7 @@
                   ${renderTimelineRiskIndicator(layout.risk)}
                 </g>
               </g>
+              ${renderTimelineOwnerAvatar(layout, index)}
               <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
                 data-action="edit-title" data-id="${escapeHtml(point.id)}"
                 role="button" tabindex="0">
