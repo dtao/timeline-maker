@@ -9,7 +9,7 @@ entries, with optional time support.
 - Shared people list for milestone owners, with initials, Gravatar email lookup,
   or uploaded local avatar images
 - Direct visualization editing for titles, dates, owners, status, and adding
-  milestones from the timeline axis
+  milestones from the timeline axis or list view
 - Multiple saved timelines with select, create, duplicate, delete, and rename
 - Date-only inputs by default, with an optional "Specify times" mode
 - Optional red current-date marker

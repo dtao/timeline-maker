@@ -438,6 +438,16 @@ h1 {
   flex-direction: column;
 }
 
+.editor-footer {
+  min-width: 920px;
+  border-top: 1px solid #eef2f7;
+  padding: 12px 14px 14px;
+}
+
+.add-list-button {
+  min-width: 178px;
+}
+
 .editor-row {
   border-bottom: 1px solid #eef2f7;
   padding: 10px 14px;

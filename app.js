@@ -22,6 +22,7 @@
 
   const elements = {
     addButton: document.querySelector("#addButton"),
+    addListButton: document.querySelector("#addListButton"),
     asOfInput: document.querySelector("#asOfInput"),
     completedCount: document.querySelector("#completedCount"),
     dateColumnLabel: document.querySelector("#dateColumnLabel"),
@@ -2560,6 +2561,7 @@
   elements.deleteTimelineButton.addEventListener("click", deleteTimeline);
 
   elements.addButton.addEventListener("click", addMilestone);
+  elements.addListButton.addEventListener("click", addMilestone);
   elements.sortButton.addEventListener("click", sortMilestones);
   elements.resetButton.addEventListener("click", resetSample);
   elements.downloadButton.addEventListener("click", downloadSvg);
