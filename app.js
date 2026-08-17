@@ -16,6 +16,8 @@
   const LABEL_TOP_EXTENT = 76;
   const MIN_CHART_HEIGHT = 560;
   const STORAGE_KEY = "timeline-maker-state-v1";
+  const TIMELINE_FONT_FAMILY =
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   const AVATAR_RADIUS = 15;
   const AVATAR_SIZE = AVATAR_RADIUS * 2;
   const AVATAR_RENDER_SIZE = 96;
@@ -1779,6 +1781,7 @@
 
     return `
       <svg aria-label="Timeline visual" class="timeline-svg" role="img"
+        font-family="${escapeHtml(TIMELINE_FONT_FAMILY)}"
         height="${model.height}" width="${model.width}"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 ${model.width} ${model.height}">
