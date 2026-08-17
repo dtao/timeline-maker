@@ -1530,11 +1530,13 @@
     `;
   }
 
-  function renderChart(model, showMarker) {
+  function renderChart(model, showMarker, options) {
+    const renderOptions = options || {};
+    const isExport = Boolean(renderOptions.exportMode);
     const span = model.maxTime - model.minTime;
     const gridBottom = model.height - 62;
     const tickLabelY = model.height - 28;
-    const timelineAddMarkup = timelineAddHover.visible
+    const timelineAddMarkup = !isExport && timelineAddHover.visible
       ? `
           <g aria-label="Add milestone on ${escapeHtml(timelineAddHover.at)}"
             class="timeline-add-control" data-action="create-milestone-at"
@@ -1547,6 +1549,14 @@
           </g>
         `
       : "";
+    const axisHitTargetMarkup = isExport
+      ? ""
+      : `
+        <rect class="timeline-axis-hit-target" data-action="axis-hover"
+          fill="transparent" height="44" pointer-events="all"
+          width="${CHART_WIDTH - CHART_LEFT - CHART_RIGHT}"
+          x="${CHART_LEFT}" y="${model.axisY - 22}" />
+      `;
     const weekendBandMarkup = model.weekendBands
       .map(function (band) {
         const x = getX(band.start, model.minTime, model.maxTime);
@@ -1701,6 +1711,33 @@
     const pointMarkup = pointLayouts
       .map(function (layout, index) {
         const point = layout.point;
+        const actionMarkup = isExport
+          ? ""
+          : `
+            <rect class="timeline-action-hover-bridge" fill="transparent"
+              height="48" pointer-events="all" width="${layout.actionBridgeWidth}"
+              x="${layout.actionBridgeX}" y="${layout.labelRectY}" />
+            <g aria-label="Edit ${layout.title}" class="timeline-edit-action"
+              data-action="open-milestone-dialog" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0"
+              transform="translate(${layout.editIconX} ${layout.editIconY})">
+              <title>Edit ${layout.title}</title>
+              <circle fill="#ffffff" r="9" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M -4 4 L -2 0 L 4 -6 L 7 -3 L 1 3 Z"
+                fill="#64748b" />
+              <path d="M -4 4 L 1 3" fill="none" stroke="#334155"
+                stroke-linecap="round" stroke-width="1.2" />
+            </g>
+            <g aria-label="Delete ${layout.title}" class="timeline-delete-action"
+              data-action="delete-milestone" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0"
+              transform="translate(${layout.deleteIconX} ${layout.deleteIconY})">
+              <title>Delete ${layout.title}</title>
+              <circle fill="#ffffff" r="9" stroke="#fecaca" stroke-width="1.5" />
+              <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" fill="none"
+                stroke="#b91c1c" stroke-linecap="round" stroke-width="1.8" />
+            </g>
+          `;
 
         return `
           <g class="timeline-point">
@@ -1734,29 +1771,7 @@
               <text fill="#64748b" font-size="15" font-weight="600"
                 text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
             </g>
-            <rect class="timeline-action-hover-bridge" fill="transparent"
-              height="48" pointer-events="all" width="${layout.actionBridgeWidth}"
-              x="${layout.actionBridgeX}" y="${layout.labelRectY}" />
-            <g aria-label="Edit ${layout.title}" class="timeline-edit-action"
-              data-action="open-milestone-dialog" data-id="${escapeHtml(point.id)}"
-              role="button" tabindex="0"
-              transform="translate(${layout.editIconX} ${layout.editIconY})">
-              <title>Edit ${layout.title}</title>
-              <circle fill="#ffffff" r="9" stroke="#cbd5e1" stroke-width="1.5" />
-              <path d="M -4 4 L -2 0 L 4 -6 L 7 -3 L 1 3 Z"
-                fill="#64748b" />
-              <path d="M -4 4 L 1 3" fill="none" stroke="#334155"
-                stroke-linecap="round" stroke-width="1.2" />
-            </g>
-            <g aria-label="Delete ${layout.title}" class="timeline-delete-action"
-              data-action="delete-milestone" data-id="${escapeHtml(point.id)}"
-              role="button" tabindex="0"
-              transform="translate(${layout.deleteIconX} ${layout.deleteIconY})">
-              <title>Delete ${layout.title}</title>
-              <circle fill="#ffffff" r="9" stroke="#fecaca" stroke-width="1.5" />
-              <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" fill="none"
-                stroke="#b91c1c" stroke-linecap="round" stroke-width="1.8" />
-            </g>
+            ${actionMarkup}
           </g>
         `;
       })
@@ -1774,10 +1789,7 @@
         <line stroke="#000000" stroke-linecap="round"
           stroke-width="3" x1="${CHART_LEFT}" x2="${CHART_WIDTH - CHART_RIGHT}"
           y1="${model.axisY}" y2="${model.axisY}" />
-        <rect class="timeline-axis-hit-target" data-action="axis-hover"
-          fill="transparent" height="44" pointer-events="all"
-          width="${CHART_WIDTH - CHART_LEFT - CHART_RIGHT}"
-          x="${CHART_LEFT}" y="${model.axisY - 22}" />
+        ${axisHitTargetMarkup}
         ${markerMarkup}
         ${timelineAddMarkup}
         ${emptyMarkup}
@@ -2872,7 +2884,7 @@
   }
 
   function downloadSvg() {
-    const blob = new Blob([currentSvgMarkup], {
+    const blob = new Blob([exportSvgMarkup()], {
       type: "image/svg+xml;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
@@ -2886,8 +2898,18 @@
     URL.revokeObjectURL(url);
   }
 
+  function exportSvgMarkup() {
+    if (!currentTimelineModel) {
+      return currentSvgMarkup;
+    }
+
+    return renderChart(currentTimelineModel, state.showToday, {
+      exportMode: true,
+    });
+  }
+
   function svgMarkupForPng() {
-    return currentSvgMarkup.replace(
+    return exportSvgMarkup().replace(
       /<image\s+href="https?:\/\/[^"]+"[\s\S]*?\/>/g,
       "",
     );

@@ -19,7 +19,7 @@
       it does not align with the "+" that appears to add a milestone. The "+"
       to add a milestone should always be directly where the cursor is (if it's
       visible).
-- [ ] Downloaded SVG/PNG should not show edit/delete icons.
+- [x] Downloaded SVG/PNG should not show edit/delete icons.
 - [ ] Bug: Downloaded SVG/PNG use browser default font when they should use the
       correct font (from style.css).
 - [ ] Dates below timeline should align to weeks (Mondays) e.g. every 7, 14, 21
