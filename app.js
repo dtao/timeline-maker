@@ -168,7 +168,7 @@
     const messages =
       Array.isArray(historyMessages) && historyMessages.length > 0
         ? historyMessages
-        : ["Created risk"];
+        : [];
 
     return {
       id: makeId(),
@@ -238,7 +238,7 @@
             "Late source changes could reopen the freeze.",
             "person-maya-patel",
             "resolved",
-            ["Created risk", "Marked mitigated"],
+            ["Source owners confirmed the freeze window and escalation path."],
           ),
         ],
         status: "completed",
@@ -438,9 +438,7 @@
           .filter(Boolean)
       : [];
 
-    return entries.length > 0
-      ? entries
-      : [createRiskHistoryEntry("Imported risk")];
+    return entries;
   }
 
   function normalizeRisk(candidate, index, people) {
@@ -1441,7 +1439,7 @@
       return "";
     }
 
-    const label = escapeHtml(riskSummaryLabel(summary));
+    const label = escapeHtml(riskSummaryHoverLabel(summary));
     const indicator =
       summary.state === "mixed"
         ? [
@@ -1857,6 +1855,29 @@
     return "All mitigated";
   }
 
+  function riskCountLabel(count, state) {
+    return `${count} ${state} risk${count === 1 ? "" : "s"}`;
+  }
+
+  function riskSummaryHoverLabel(summary) {
+    if (summary.total === 0) {
+      return "No risks";
+    }
+
+    if (summary.state === "mixed") {
+      return `${riskCountLabel(
+        summary.unresolved,
+        "unresolved",
+      )}, ${riskCountLabel(summary.resolved, "mitigated")}`;
+    }
+
+    if (summary.unresolved > 0) {
+      return riskCountLabel(summary.unresolved, "unresolved");
+    }
+
+    return riskCountLabel(summary.resolved, "mitigated");
+  }
+
   function riskHistoryKey(milestoneId, riskId) {
     return `${milestoneId}:${riskId}`;
   }
@@ -1917,28 +1938,151 @@
     `;
   }
 
+  function isLegacyRiskMetadataMessage(message) {
+    const value = String(message || "").trim();
+
+    return (
+      value === "Created risk" ||
+      value === "Imported risk" ||
+      value === "Marked mitigated" ||
+      value === "Reopened risk" ||
+      value === "Cleared owner" ||
+      /^Renamed risk from /.test(value) ||
+      /^Assigned owner to /.test(value)
+    );
+  }
+
+  function riskUpdateEntries(risk) {
+    return Array.isArray(risk.history)
+      ? risk.history.filter(function (entry) {
+          return entry && !isLegacyRiskMetadataMessage(entry.message);
+        })
+      : [];
+  }
+
+  function riskStatusLabel(risk) {
+    return risk.status === "resolved" ? "Mitigated" : "Open";
+  }
+
+  function renderRiskOwnerBadge(risk) {
+    const person = getPersonById(risk.ownerId);
+    const label = person ? ownerLabel(person) || "Unnamed person" : "Unassigned";
+
+    return `
+      <span class="risk-owner-badge" title="${escapeHtml(label)}">
+        ${renderPersonAvatar(person, "risk-owner-avatar")}
+      </span>
+    `;
+  }
+
   function renderRiskHistory(milestoneId, risk) {
     if (expandedRiskHistoryKey !== riskHistoryKey(milestoneId, risk.id)) {
       return "";
     }
 
-    const history = Array.isArray(risk.history) ? risk.history : [];
+    const updates = riskUpdateEntries(risk);
+    const isResolved = risk.status === "resolved";
 
     return `
-      <ol class="risk-history-list">
-        ${history
-          .slice()
-          .reverse()
-          .map(function (entry) {
-            return `
-              <li>
-                <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
-                <span>${escapeHtml(entry.message)}</span>
-              </li>
-            `;
-          })
-          .join("")}
-      </ol>
+      <div class="risk-detail-panel">
+        <label class="risk-field risk-field-description">
+          <span>Description</span>
+          <textarea
+            data-action="risk-title"
+            data-id="${escapeHtml(milestoneId)}"
+            data-original="${escapeHtml(risk.title)}"
+            data-risk-id="${escapeHtml(risk.id)}"
+          >${escapeHtml(risk.title)}</textarea>
+        </label>
+        <div class="risk-detail-grid">
+          <label class="risk-field">
+            <span>Owner</span>
+            <select
+              aria-label="Risk owner"
+              data-action="set-risk-owner"
+              data-id="${escapeHtml(milestoneId)}"
+              data-risk-id="${escapeHtml(risk.id)}"
+            >
+              ${renderRiskOwnerOptions(risk)}
+            </select>
+          </label>
+          <div class="risk-field">
+            <span>Status</span>
+            <span class="risk-status-readout risk-status-${risk.status}">
+              ${riskStatusLabel(risk)}
+            </span>
+          </div>
+        </div>
+        <label class="risk-field risk-field-update">
+          <span>Update</span>
+          <textarea
+            data-action="risk-update-message"
+            data-id="${escapeHtml(milestoneId)}"
+            data-risk-id="${escapeHtml(risk.id)}"
+            placeholder="${
+              isResolved
+                ? "Add another update"
+                : "Add an update, or use it as the mitigation note"
+            }"
+          ></textarea>
+        </label>
+        <div class="risk-update-actions">
+          <button
+            class="risk-update-button"
+            data-action="add-risk-update"
+            data-id="${escapeHtml(milestoneId)}"
+            data-risk-id="${escapeHtml(risk.id)}"
+            type="button"
+          >
+            Add update
+          </button>
+          ${
+            isResolved
+              ? `
+                <button
+                  class="risk-secondary-button"
+                  data-action="reopen-risk"
+                  data-id="${escapeHtml(milestoneId)}"
+                  data-risk-id="${escapeHtml(risk.id)}"
+                  type="button"
+                >
+                  Reopen
+                </button>
+              `
+              : `
+                <button
+                  class="risk-resolve-button"
+                  data-action="mitigate-risk"
+                  data-id="${escapeHtml(milestoneId)}"
+                  data-risk-id="${escapeHtml(risk.id)}"
+                  type="button"
+                >
+                  Mark mitigated
+                </button>
+              `
+          }
+        </div>
+        ${
+          updates.length === 0
+            ? '<p class="risk-history-empty">No updates yet.</p>'
+            : `
+              <ol class="risk-history-list">
+                ${updates
+                  .slice()
+                  .reverse()
+                  .map(function (entry) {
+                    return `
+                      <li>
+                        <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                        <span>${escapeHtml(entry.message)}</span>
+                      </li>
+                    `;
+                  })
+                  .join("")}
+              </ol>
+            `
+        }
+      </div>
     `;
   }
 
@@ -1970,44 +2114,34 @@
         <div class="risk-list">
           ${risks
             .map(function (risk) {
-              const historyCount = Array.isArray(risk.history)
-                ? risk.history.length
-                : 0;
+              const updates = riskUpdateEntries(risk);
               const isHistoryExpanded =
                 expandedRiskHistoryKey === riskHistoryKey(milestone.id, risk.id);
+              const description =
+                String(risk.title || "").trim() || "Untitled risk";
+              const owner = getPersonById(risk.ownerId);
+              const ownerText = owner
+                ? ownerLabel(owner) || "Unnamed person"
+                : "Unassigned";
 
               return `
                 <div class="risk-item risk-item-${risk.status}">
-                  <div class="risk-item-grid">
-                    <input
-                      aria-label="Risk title"
-                      data-action="risk-title"
-                      data-id="${escapeHtml(milestone.id)}"
-                      data-original="${escapeHtml(risk.title)}"
-                      data-risk-id="${escapeHtml(risk.id)}"
-                      value="${escapeHtml(risk.title)}"
-                    />
-                    <select
-                      aria-label="Risk owner"
-                      data-action="set-risk-owner"
+                  <div class="risk-row">
+                    ${renderRiskOwnerBadge(risk)}
+                    <button
+                      aria-expanded="${isHistoryExpanded ? "true" : "false"}"
+                      class="risk-summary-button"
+                      data-action="toggle-risk-history"
                       data-id="${escapeHtml(milestone.id)}"
                       data-risk-id="${escapeHtml(risk.id)}"
+                      type="button"
                     >
-                      ${renderRiskOwnerOptions(risk)}
-                    </select>
-                    <select
-                      aria-label="Risk status"
-                      data-action="set-risk-status"
-                      data-id="${escapeHtml(milestone.id)}"
-                      data-risk-id="${escapeHtml(risk.id)}"
-                    >
-                      <option value="open" ${
-                        risk.status === "open" ? "selected" : ""
-                      }>Open</option>
-                      <option value="resolved" ${
-                        risk.status === "resolved" ? "selected" : ""
-                      }>Mitigated</option>
-                    </select>
+                      <span class="risk-description">${escapeHtml(description)}</span>
+                      <span class="risk-owner-text">${escapeHtml(ownerText)}</span>
+                    </button>
+                    <span class="risk-status-pill risk-status-${risk.status}">
+                      ${riskStatusLabel(risk)}
+                    </span>
                     <button
                       aria-expanded="${isHistoryExpanded ? "true" : "false"}"
                       class="risk-history-toggle"
@@ -2016,7 +2150,18 @@
                       data-risk-id="${escapeHtml(risk.id)}"
                       type="button"
                     >
-                      History ${historyCount}
+                      Updates ${updates.length}
+                    </button>
+                    <button
+                      aria-label="Delete risk"
+                      class="risk-delete-button icon-button"
+                      data-action="delete-risk"
+                      data-id="${escapeHtml(milestone.id)}"
+                      data-risk-id="${escapeHtml(risk.id)}"
+                      title="Delete risk"
+                      type="button"
+                    >
+                      &times;
                     </button>
                   </div>
                   ${renderRiskHistory(milestone.id, risk)}
@@ -2580,10 +2725,6 @@
 
       if (risk && risk.ownerId !== person.id) {
         risk.ownerId = person.id;
-        appendRiskHistory(
-          risk,
-          `Assigned owner to ${ownerHistoryLabel(person.id)}`,
-        );
       }
     }
 
@@ -2882,15 +3023,16 @@
     }) || null;
   }
 
-  function appendRiskHistory(risk, message) {
+  function appendRiskUpdate(risk, message) {
+    const update = String(message || "").trim();
+
+    if (!update) {
+      return false;
+    }
+
     risk.history = Array.isArray(risk.history) ? risk.history : [];
-    risk.history.push(createRiskHistoryEntry(message));
-  }
-
-  function ownerHistoryLabel(personId) {
-    const person = getPersonById(personId);
-
-    return person ? ownerLabel(person) || "Unnamed person" : "No owner";
+    risk.history.push(createRiskHistoryEntry(update));
+    return true;
   }
 
   function rerenderRisks() {
@@ -2910,6 +3052,10 @@
     milestone.risks = milestoneRisks(milestone).concat([
       createRisk("New risk", "", "open"),
     ]);
+    expandedRiskHistoryKey = riskHistoryKey(
+      milestoneId,
+      milestone.risks[milestone.risks.length - 1].id,
+    );
     rerenderRisks();
   }
 
@@ -2926,19 +3072,18 @@
 
   function recordRiskTitleChange(milestoneId, riskId, previousTitle, title) {
     const risk = findRisk(milestoneId, riskId);
-    const from = String(previousTitle || "").trim() || "Untitled risk";
-    const to = String(title || "").trim() || "Untitled risk";
+    const from = String(previousTitle || "");
+    const to = String(title || "");
 
     if (!risk || from === to) {
       return;
     }
 
     risk.title = title;
-    appendRiskHistory(risk, `Renamed risk from "${from}" to "${to}"`);
     rerenderRisks();
   }
 
-  function setRiskStatus(milestoneId, riskId, status) {
+  function setRiskStatus(milestoneId, riskId, status, update) {
     const risk = findRisk(milestoneId, riskId);
     const nextStatus = status === "resolved" ? "resolved" : "open";
 
@@ -2946,12 +3091,13 @@
       return;
     }
 
+    if (nextStatus === "resolved" && !appendRiskUpdate(risk, update)) {
+      return false;
+    }
+
     risk.status = nextStatus;
-    appendRiskHistory(
-      risk,
-      nextStatus === "resolved" ? "Marked mitigated" : "Reopened risk",
-    );
     rerenderRisks();
+    return true;
   }
 
   function setRiskOwner(milestoneId, riskId, personId) {
@@ -2963,12 +3109,35 @@
     }
 
     risk.ownerId = nextPersonId;
-    appendRiskHistory(
-      risk,
-      nextPersonId
-        ? `Assigned owner to ${ownerHistoryLabel(nextPersonId)}`
-        : "Cleared owner",
-    );
+    rerenderRisks();
+  }
+
+  function addRiskUpdate(milestoneId, riskId, message) {
+    const risk = findRisk(milestoneId, riskId);
+
+    if (!risk || !appendRiskUpdate(risk, message)) {
+      return false;
+    }
+
+    rerenderRisks();
+    return true;
+  }
+
+  function deleteRisk(milestoneId, riskId) {
+    const milestone = findMilestone(milestoneId);
+
+    if (!milestone) {
+      return;
+    }
+
+    milestone.risks = milestoneRisks(milestone).filter(function (risk) {
+      return risk.id !== riskId;
+    });
+
+    if (expandedRiskHistoryKey === riskHistoryKey(milestoneId, riskId)) {
+      expandedRiskHistoryKey = "";
+    }
+
     rerenderRisks();
   }
 
@@ -3200,6 +3369,28 @@
     renderTimelineAndCounts();
   }
 
+  function riskUpdateInputForAction(actionTarget) {
+    const riskItem = closestMatch(actionTarget, ".risk-item");
+
+    return riskItem && riskItem.querySelector
+      ? riskItem.querySelector('[data-action="risk-update-message"]')
+      : null;
+  }
+
+  function riskUpdateValueForAction(actionTarget) {
+    const input = riskUpdateInputForAction(actionTarget);
+
+    return input ? input.value.trim() : "";
+  }
+
+  function focusRiskUpdateInput(actionTarget) {
+    const input = riskUpdateInputForAction(actionTarget);
+
+    if (input && typeof input.focus === "function") {
+      input.focus();
+    }
+  }
+
   function handleRiskInput(event) {
     if (event.target.dataset.action !== "risk-title") {
       return false;
@@ -3221,15 +3412,6 @@
         event.target.dataset.id,
         event.target.dataset.riskId,
         event.target.dataset.original,
-        event.target.value,
-      );
-      return true;
-    }
-
-    if (action === "set-risk-status") {
-      setRiskStatus(
-        event.target.dataset.id,
-        event.target.dataset.riskId,
         event.target.value,
       );
       return true;
@@ -3282,6 +3464,43 @@
 
     if (actionTarget.dataset.action === "toggle-risk-history") {
       toggleRiskHistory(actionTarget.dataset.id, actionTarget.dataset.riskId);
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "add-risk-update") {
+      if (
+        !addRiskUpdate(
+          actionTarget.dataset.id,
+          actionTarget.dataset.riskId,
+          riskUpdateValueForAction(actionTarget),
+        )
+      ) {
+        focusRiskUpdateInput(actionTarget);
+      }
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "mitigate-risk") {
+      if (
+        !setRiskStatus(
+          actionTarget.dataset.id,
+          actionTarget.dataset.riskId,
+          "resolved",
+          riskUpdateValueForAction(actionTarget),
+        )
+      ) {
+        focusRiskUpdateInput(actionTarget);
+      }
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "reopen-risk") {
+      setRiskStatus(actionTarget.dataset.id, actionTarget.dataset.riskId, "open");
+      return true;
+    }
+
+    if (actionTarget.dataset.action === "delete-risk") {
+      deleteRisk(actionTarget.dataset.id, actionTarget.dataset.riskId);
       return true;
     }
 

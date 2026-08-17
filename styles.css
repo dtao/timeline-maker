@@ -429,11 +429,13 @@ h1 {
 }
 
 .timeline-risk-status {
-  pointer-events: none;
+  cursor: default;
+  pointer-events: auto;
 }
 
 .timeline-owner-avatar {
-  pointer-events: none;
+  cursor: default;
+  pointer-events: auto;
 }
 
 .timeline-axis-hit-target {
@@ -778,43 +780,196 @@ h1 {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #ffffff;
-  padding: 10px;
+  overflow: hidden;
 }
 
 .risk-item-open {
-  border-color: #fbbf24;
-  background: #fffbeb;
+  border-color: #fde68a;
 }
 
 .risk-item-resolved {
-  border-color: #86efac;
-  background: #f0fdf4;
+  border-color: #bbf7d0;
 }
 
-.risk-item-grid {
+.risk-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 132px 118px 104px;
-  gap: 8px;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto 34px;
+  gap: 10px;
   align-items: center;
+  padding: 10px;
 }
 
-.risk-item-grid input,
-.risk-item-grid select,
-.risk-item-grid button {
-  min-height: 36px;
-  font-size: 0.82rem;
+.risk-owner-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.risk-history-toggle {
+.risk-owner-avatar {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  font-size: 0.68rem;
+}
+
+.risk-summary-button {
+  display: grid;
+  min-height: 38px;
+  min-width: 0;
+  align-content: center;
+  justify-items: start;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  text-align: left;
+  transform: none;
+}
+
+.risk-summary-button:hover {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.risk-description {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-owner-text {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-status-pill,
+.risk-status-readout {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 950;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.risk-status-open {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.risk-status-resolved {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.risk-history-toggle,
+.risk-delete-button {
+  min-height: 32px;
+  font-size: 0.76rem;
   padding: 0 8px;
+}
+
+.risk-delete-button {
+  width: 32px;
+  min-width: 32px;
+  border-color: #fee2e2;
+  color: #b91c1c;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.risk-detail-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.risk-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.risk-field {
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.risk-field textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.risk-field-description textarea {
+  min-height: 68px;
+}
+
+.risk-field select,
+.risk-field textarea {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 650;
+  text-transform: none;
+}
+
+.risk-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.risk-update-button,
+.risk-resolve-button,
+.risk-secondary-button {
+  min-height: 34px;
+  font-size: 0.8rem;
+}
+
+.risk-resolve-button {
+  border-color: #86efac;
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.risk-secondary-button {
+  background: #ffffff;
 }
 
 .risk-history-list {
   display: grid;
   gap: 8px;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.risk-history-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .risk-history-list li {
@@ -1064,12 +1219,17 @@ h1 {
   }
 
   .risk-controls-header,
-  .risk-item-grid {
+  .risk-detail-grid,
+  .risk-row {
     grid-template-columns: 1fr;
   }
 
   .risk-controls-header {
     display: grid;
+  }
+
+  .risk-owner-badge {
+    justify-content: flex-start;
   }
 
 }
