@@ -3607,11 +3607,12 @@
   });
 
   elements.timelineMount.addEventListener("mousemove", function (event) {
-    if (closestMatch(event.target, '[data-action="create-milestone-at"]')) {
-      return;
-    }
-
-    if (closestMatch(event.target, '[data-action="axis-hover"]')) {
+    if (
+      closestMatch(
+        event.target,
+        '[data-action="axis-hover"], [data-action="create-milestone-at"]',
+      )
+    ) {
       updateTimelineAddHover(event.clientX);
       return;
     }

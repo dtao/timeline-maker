@@ -15,7 +15,7 @@
 - [x] Add ability to delete milestone from timeline view (small red X or trash
       icon, which should only appear on hover)
 - [x] Bug: PNG download only captures small cropped portion of timeline visual
-- [ ] If cursor is too far left or right on the solid line in the timeline view,
+- [x] If cursor is too far left or right on the solid line in the timeline view,
       it does not align with the "+" that appears to add a milestone. The "+"
       to add a milestone should always be directly where the cursor is (if it's
       visible).
