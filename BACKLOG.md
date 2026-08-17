@@ -22,6 +22,6 @@
 - [x] Downloaded SVG/PNG should not show edit/delete icons.
 - [x] Bug: Downloaded SVG/PNG use browser default font when they should use the
       correct font (from style.css).
-- [ ] Dates below timeline should align to weeks (Mondays) e.g. every 7, 14, 21
+- [x] Dates below timeline should align to weeks (Mondays) e.g. every 7, 14, 21
       etc. days depending on scale. Basically every date shown should be a
       Monday.

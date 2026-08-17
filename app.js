@@ -1,5 +1,6 @@
 (function () {
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const WEEK_MS = 7 * DAY_MS;
   const CHART_WIDTH = 1120;
   const CHART_LEFT = 88;
   const CHART_RIGHT = 92;
@@ -1071,7 +1072,7 @@
   }
 
   function formatTickDate(date, span, includeTimes) {
-    return formatDate(date, includeTimes && span <= 4 * DAY_MS);
+    return formatDate(date, false);
   }
 
   function formatMilestoneDate(date, includeTimes) {
@@ -1192,14 +1193,75 @@
     return bands;
   }
 
+  function mondayOnOrBefore(timestamp) {
+    const date = new Date(timestamp);
+    const daysSinceMonday = (date.getDay() + 6) % 7;
+
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - daysSinceMonday);
+
+    return date;
+  }
+
+  function mondayOnOrAfter(timestamp) {
+    const date = mondayOnOrBefore(timestamp);
+
+    if (date.getTime() < timestamp) {
+      date.setDate(date.getDate() + 7);
+    }
+
+    return date;
+  }
+
+  function addWeeks(date, weeks) {
+    const next = new Date(date);
+
+    next.setDate(next.getDate() + weeks * 7);
+    return next;
+  }
+
+  function alignTimelineRangeToWeeks(minTime, maxTime) {
+    const minDate = mondayOnOrBefore(minTime);
+    const maxDate = mondayOnOrAfter(maxTime);
+
+    if (maxDate.getTime() <= minDate.getTime()) {
+      maxDate.setDate(maxDate.getDate() + 7);
+    }
+
+    return {
+      maxTime: maxDate.getTime(),
+      minTime: minDate.getTime(),
+    };
+  }
+
+  function chooseWeekTickStep(minTime, maxTime) {
+    const weekCount = Math.max((maxTime - minTime) / WEEK_MS, 1);
+    const targetStep = Math.ceil(weekCount / 5);
+    const steps = [1, 2, 3, 4, 6, 8, 13, 26, 52, 104];
+
+    return (
+      steps.find(function (step) {
+        return step >= targetStep;
+      }) || Math.ceil(targetStep / 52) * 52
+    );
+  }
+
   function buildTicks(minTime, maxTime) {
-    return Array.from({ length: 6 }, function (_, index) {
-      const timestamp = minTime + ((maxTime - minTime) / 5) * index;
-      return {
+    const stepWeeks = chooseWeekTickStep(minTime, maxTime);
+    const ticks = [];
+    let cursor = mondayOnOrAfter(minTime);
+
+    while (cursor.getTime() <= maxTime) {
+      const timestamp = cursor.getTime();
+
+      ticks.push({
         date: new Date(timestamp),
         x: getX(timestamp, minTime, maxTime),
-      };
-    });
+      });
+      cursor = addWeeks(cursor, stepWeeks);
+    }
+
+    return ticks;
   }
 
   function createLabelTrack(side, row) {
@@ -1342,6 +1404,10 @@
       minTime -= padding;
       maxTime += padding;
     }
+
+    const alignedRange = alignTimelineRangeToWeeks(minTime, maxTime);
+    minTime = alignedRange.minTime;
+    maxTime = alignedRange.maxTime;
 
     const basicPoints = parsedMilestones
       .slice()
