@@ -15,6 +15,7 @@ entries, with optional time support.
   milestones from the timeline axis or list view, and hover deletion
 - Multiple saved timelines with select, create, duplicate, delete, and rename
 - Date-only inputs by default, with an optional "Specify times" mode
+- Optional fixed timeline start/end range
 - Optional red current-date marker
 - Light gray weekend bands
 - Completed milestones shown with reduced opacity and a green check signal

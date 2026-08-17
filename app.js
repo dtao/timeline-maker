@@ -27,6 +27,7 @@
     addButton: document.querySelector("#addButton"),
     addListButton: document.querySelector("#addListButton"),
     asOfInput: document.querySelector("#asOfInput"),
+    clearRangeButton: document.querySelector("#clearRangeButton"),
     completedCount: document.querySelector("#completedCount"),
     dateColumnLabel: document.querySelector("#dateColumnLabel"),
     deleteTimelineButton: document.querySelector("#deleteTimelineButton"),
@@ -56,6 +57,8 @@
     personNameInput: document.querySelector("#personNameInput"),
     personPhotoInput: document.querySelector("#personPhotoInput"),
     personPhotoPreview: document.querySelector("#personPhotoPreview"),
+    rangeEndInput: document.querySelector("#rangeEndInput"),
+    rangeStartInput: document.querySelector("#rangeStartInput"),
     resetButton: document.querySelector("#resetButton"),
     showTodayInput: document.querySelector("#showTodayInput"),
     sortButton: document.querySelector("#sortButton"),
@@ -580,6 +583,8 @@
       includeTimes: false,
       milestones:
         withSample === false ? [] : createExampleMilestones(now, false),
+      rangeEnd: "",
+      rangeStart: "",
       showToday: true,
     };
   }
@@ -618,6 +623,10 @@
           : toDateValueForMode(now, includeTimes),
       includeTimes: includeTimes,
       milestones: milestones,
+      rangeEnd:
+        typeof candidate.rangeEnd === "string" ? candidate.rangeEnd : "",
+      rangeStart:
+        typeof candidate.rangeStart === "string" ? candidate.rangeStart : "",
       showToday:
         typeof candidate.showToday === "boolean" ? candidate.showToday : true,
     };
@@ -641,6 +650,8 @@
       milestones: cloneMilestones(activeTimeline.milestones),
       name: activeTimeline.name,
       people: clonePeople(people),
+      rangeEnd: activeTimeline.rangeEnd || "",
+      rangeStart: activeTimeline.rangeStart || "",
       showToday: activeTimeline.showToday,
       sidebarCollapsed: Boolean(sidebarCollapsed),
       timelines: timelines,
@@ -718,6 +729,8 @@
         includeTimes: state.includeTimes,
         milestones: cloneMilestones(state.milestones),
         showToday: state.showToday,
+        rangeEnd: state.rangeEnd,
+        rangeStart: state.rangeStart,
       };
     });
   }
@@ -733,6 +746,8 @@
     state.asOf = timeline.asOf;
     state.includeTimes = timeline.includeTimes;
     state.milestones = cloneMilestones(timeline.milestones);
+    state.rangeEnd = timeline.rangeEnd || "";
+    state.rangeStart = timeline.rangeStart || "";
     state.showToday = timeline.showToday;
   }
 
@@ -753,7 +768,7 @@
           people: state.people,
           sidebarCollapsed: state.sidebarCollapsed,
           timelines: state.timelines,
-          version: 5,
+          version: 6,
         }),
       );
     } catch (_error) {
@@ -1372,11 +1387,47 @@
     );
   }
 
+  function timelineRangeOverride(rangeStart, rangeEnd, includeTimes) {
+    const startDate = parseDateValue(rangeStart, includeTimes);
+    const endDate = parseDateValue(rangeEnd, includeTimes);
+
+    return {
+      endTime: endDate ? endDate.getTime() : null,
+      startTime: startDate ? startDate.getTime() : null,
+    };
+  }
+
+  function applyTimelineRangeOverride(minTime, maxTime, rangeOverride) {
+    const alignedRange = alignTimelineRangeToWeeks(minTime, maxTime);
+    let nextMinTime =
+      rangeOverride.startTime !== null
+        ? rangeOverride.startTime
+        : alignedRange.minTime;
+    let nextMaxTime =
+      rangeOverride.endTime !== null
+        ? rangeOverride.endTime
+        : alignedRange.maxTime;
+
+    if (nextMaxTime <= nextMinTime) {
+      if (rangeOverride.endTime !== null && rangeOverride.startTime === null) {
+        nextMinTime = nextMaxTime - WEEK_MS;
+      } else {
+        nextMaxTime = nextMinTime + WEEK_MS;
+      }
+    }
+
+    return {
+      maxTime: nextMaxTime,
+      minTime: nextMinTime,
+    };
+  }
+
   function buildTimelineModel(
     parsedMilestones,
     markerDate,
     showMarker,
     includeTimes,
+    rangeOverride,
   ) {
     const markerTime = markerDate ? markerDate.getTime() : null;
     const timestamps = parsedMilestones.map(function (milestone) {
@@ -1405,12 +1456,19 @@
       maxTime += padding;
     }
 
-    const alignedRange = alignTimelineRangeToWeeks(minTime, maxTime);
+    const alignedRange = applyTimelineRangeOverride(
+      minTime,
+      maxTime,
+      rangeOverride || { endTime: null, startTime: null },
+    );
     minTime = alignedRange.minTime;
     maxTime = alignedRange.maxTime;
 
     const basicPoints = parsedMilestones
       .slice()
+      .filter(function (milestone) {
+        return milestone.timestamp >= minTime && milestone.timestamp <= maxTime;
+      })
       .sort(function (a, b) {
         return a.timestamp - b.timestamp;
       })
@@ -1441,7 +1499,10 @@
       axisY: axisY,
       height: height,
       markerX:
-        showMarker && markerTime !== null
+        showMarker &&
+        markerTime !== null &&
+        markerTime >= minTime &&
+        markerTime <= maxTime
           ? getX(markerTime, minTime, maxTime)
           : null,
       minTime: minTime,
@@ -2559,6 +2620,18 @@
 
     elements.asOfInput.type = state.includeTimes ? "datetime-local" : "date";
     elements.asOfInput.value = toInputValue(state.asOf, state.includeTimes);
+    elements.rangeStartInput.type = state.includeTimes
+      ? "datetime-local"
+      : "date";
+    elements.rangeEndInput.type = state.includeTimes ? "datetime-local" : "date";
+    elements.rangeStartInput.value = toInputValue(
+      state.rangeStart,
+      state.includeTimes,
+    );
+    elements.rangeEndInput.value = toInputValue(
+      state.rangeEnd,
+      state.includeTimes,
+    );
     elements.timelineNameInput.value = state.name;
     elements.dateColumnLabel.textContent = state.includeTimes
       ? "Date / time"
@@ -2575,6 +2648,11 @@
       asOfDate,
       state.showToday,
       state.includeTimes,
+      timelineRangeOverride(
+        state.rangeStart,
+        state.rangeEnd,
+        state.includeTimes,
+      ),
     );
     currentTimelineModel = model;
     currentSvgMarkup = renderChart(model, state.showToday);
@@ -2918,6 +2996,8 @@
       asOf: activeTimeline.asOf,
       includeTimes: activeTimeline.includeTimes,
       milestones: cloneMilestones(activeTimeline.milestones),
+      rangeEnd: activeTimeline.rangeEnd || "",
+      rangeStart: activeTimeline.rangeStart || "",
       showToday: activeTimeline.showToday,
     };
 
@@ -3600,6 +3680,22 @@
 
   elements.asOfInput.addEventListener("input", function (event) {
     state.asOf = event.target.value;
+    saveAndRender();
+  });
+
+  elements.rangeStartInput.addEventListener("input", function (event) {
+    state.rangeStart = event.target.value;
+    saveAndRender();
+  });
+
+  elements.rangeEndInput.addEventListener("input", function (event) {
+    state.rangeEnd = event.target.value;
+    saveAndRender();
+  });
+
+  elements.clearRangeButton.addEventListener("click", function () {
+    state.rangeStart = "";
+    state.rangeEnd = "";
     saveAndRender();
   });
 

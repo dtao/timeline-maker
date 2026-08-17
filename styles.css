@@ -327,7 +327,10 @@ h1 {
 
 .control-panel {
   display: grid;
-  grid-template-columns: minmax(280px, 420px) minmax(210px, 1fr) auto;
+  grid-template-columns:
+    minmax(240px, 320px)
+    minmax(320px, 1fr)
+    minmax(190px, 240px);
   gap: 14px;
   align-items: end;
   padding: 14px;
@@ -350,6 +353,25 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.range-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.range-date-field {
+  display: grid;
+  gap: 5px;
+}
+
+.range-date-field span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .toggle-row {
@@ -377,6 +399,7 @@ h1 {
 .control-actions {
   display: flex;
   flex-wrap: wrap;
+  grid-column: 1 / -1;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -1210,6 +1233,10 @@ h1 {
   }
 
   .control-row {
+    grid-template-columns: 1fr;
+  }
+
+  .range-row {
     grid-template-columns: 1fr;
   }
 
