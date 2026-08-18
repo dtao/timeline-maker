@@ -5,7 +5,7 @@ entries, with optional time support.
 
 ## Features
 
-- Editable milestone title, date, and status fields
+- Editable milestone title, date, owner, and status fields
 - Optional milestone details in the milestone edit dialog
 - Milestone risks with optional owners, mitigation state, per-risk history, and
   small timeline risk-state dots
@@ -18,8 +18,10 @@ entries, with optional time support.
 - Optional fixed timeline start/end range
 - Optional red current-date marker
 - Light gray weekend bands
+- Planned, in-progress, and completed milestone statuses
+- In-progress milestones shown with a blue play signal
 - Completed milestones shown with reduced opacity and a green check signal
-- Overdue pending milestones shown with an amber warning signal and thicker border
+- Overdue planned milestones shown with an amber warning signal and thicker border
 - Close milestones stack into non-overlapping label rows with elbow connectors
 - SVG and PNG timeline download
 - Browser-local persistence across page refreshes

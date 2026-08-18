@@ -22,6 +22,11 @@
   const AVATAR_RADIUS = 15;
   const AVATAR_SIZE = AVATAR_RADIUS * 2;
   const AVATAR_RENDER_SIZE = 96;
+  const MILESTONE_STATUSES = [
+    { value: "pending", label: "Planned" },
+    { value: "in-progress", label: "In Progress" },
+    { value: "completed", label: "Completed" },
+  ];
 
   const elements = {
     addButton: document.querySelector("#addButton"),
@@ -47,6 +52,7 @@
     milestoneTitleInput: document.querySelector("#milestoneTitleInput"),
     newTimelineButton: document.querySelector("#newTimelineButton"),
     nowButton: document.querySelector("#nowButton"),
+    inProgressCount: document.querySelector("#inProgressCount"),
     cancelPersonButton: document.querySelector("#cancelPersonButton"),
     clearPersonPhotoButton: document.querySelector("#clearPersonPhotoButton"),
     ownerMenuLayer: document.querySelector("#ownerMenuLayer"),
@@ -187,6 +193,26 @@
     };
   }
 
+  function normalizeMilestoneStatus(status) {
+    if (status === "completed" || status === "in-progress") {
+      return status;
+    }
+
+    return "pending";
+  }
+
+  function renderMilestoneStatusOptions(selectedStatus) {
+    const normalizedStatus = normalizeMilestoneStatus(selectedStatus);
+
+    return MILESTONE_STATUSES.map(function (status) {
+      return `
+        <option value="${status.value}" ${
+          status.value === normalizedStatus ? "selected" : ""
+        }>${status.label}</option>
+      `;
+    }).join("");
+  }
+
   function createExamplePeople() {
     return [
       {
@@ -271,7 +297,7 @@
         details: "Invite pilot users and monitor feedback during the first week.",
         ownerId: "person-sam-rivera",
         risks: [],
-        status: "pending",
+        status: "in-progress",
       },
       {
         id: "public-release",
@@ -533,7 +559,7 @@
         typeof candidate.details === "string" ? candidate.details : "",
       ownerId: ownerId,
       risks: normalizeRisks(candidate.risks, people),
-      status: candidate.status === "completed" ? "completed" : "pending",
+      status: normalizeMilestoneStatus(candidate.status),
     };
   }
 
@@ -1095,8 +1121,14 @@
   }
 
   function getMilestoneState(status, timestamp, asOfDate) {
-    if (status === "completed") {
+    const milestoneStatus = normalizeMilestoneStatus(status);
+
+    if (milestoneStatus === "completed") {
       return "completed";
+    }
+
+    if (milestoneStatus === "in-progress") {
+      return "in-progress";
     }
 
     if (asOfDate && timestamp < asOfDate.getTime()) {
@@ -1534,6 +1566,15 @@
       };
     }
 
+    if (timelineState === "in-progress") {
+      return {
+        fill: "#dbeafe",
+        stroke: "#2563eb",
+        strokeWidth: 3,
+        opacity: 1,
+      };
+    }
+
     return {
       fill: "#ecfeff",
       stroke: "#0f766e",
@@ -1558,6 +1599,10 @@
         'x1="0" x2="0" y1="-4" y2="2" />',
         '<circle cx="0" cy="5.5" fill="#7c2d12" r="1.4" />',
       ].join(" ");
+    }
+
+    if (timelineState === "in-progress") {
+      return '<path d="M -5 -8 L 8 0 L -5 8 Z" fill="#2563eb" />';
     }
 
     return '<circle cx="0" cy="0" fill="#0f766e" r="4" />';
@@ -1767,11 +1812,27 @@
         const riskDotY = point.y - 18;
         const risk = riskSummary(point);
         const connectorColor =
-          point.timelineState === "overdue" ? "#d97706" : "#94a3b8";
-        const connectorWidth = point.timelineState === "overdue" ? 3 : 2;
+          point.timelineState === "overdue"
+            ? "#d97706"
+            : point.timelineState === "in-progress"
+              ? "#2563eb"
+              : "#94a3b8";
+        const connectorWidth =
+          point.timelineState === "overdue" ||
+          point.timelineState === "in-progress"
+            ? 3
+            : 2;
         const anchorColor =
-          point.timelineState === "overdue" ? "#d97706" : "#475569";
-        const anchorWidth = point.timelineState === "overdue" ? 4 : 2;
+          point.timelineState === "overdue"
+            ? "#d97706"
+            : point.timelineState === "in-progress"
+              ? "#2563eb"
+              : "#475569";
+        const anchorWidth =
+          point.timelineState === "overdue" ||
+          point.timelineState === "in-progress"
+            ? 4
+            : 2;
         const anchorMaskRadius = 13;
         const markerMaskRadius = LABEL_BADGE_RADIUS + 4;
 
@@ -2049,7 +2110,11 @@
       return "Overdue";
     }
 
-    return "Upcoming";
+    if (timelineState === "in-progress") {
+      return "In Progress";
+    }
+
+    return "Planned";
   }
 
   function getPersonById(personId) {
@@ -2517,29 +2582,29 @@
       return;
     }
 
+    const activeStatus = normalizeMilestoneStatus(milestone.status);
+    const statusesMarkup = MILESTONE_STATUSES.map(function (status) {
+      return `
+        <button
+          class="status-menu-item${
+            activeStatus === status.value ? " active" : ""
+          }"
+          data-action="set-status"
+          data-id="${escapeHtml(milestone.id)}"
+          data-status="${status.value}"
+          type="button"
+        >
+          ${status.label}
+        </button>
+      `;
+    }).join("");
+
     elements.statusMenuLayer.innerHTML = `
       <div
         class="status-menu-panel"
         style="left: ${statusMenuPosition.left}px; top: ${statusMenuPosition.top}px;"
       >
-        <button
-          class="status-menu-item${milestone.status === "pending" ? " active" : ""}"
-          data-action="set-status"
-          data-id="${escapeHtml(milestone.id)}"
-          data-status="pending"
-          type="button"
-        >
-          Pending
-        </button>
-        <button
-          class="status-menu-item${milestone.status === "completed" ? " active" : ""}"
-          data-action="set-status"
-          data-id="${escapeHtml(milestone.id)}"
-          data-status="completed"
-          type="button"
-        >
-          Completed
-        </button>
+        ${statusesMarkup}
       </div>
     `;
   }
@@ -2550,7 +2615,11 @@
         const date = parseDateValue(milestone.at, state.includeTimes);
         const timelineState = date
           ? getMilestoneState(milestone.status, date.getTime(), asOfDate)
-          : "upcoming";
+          : getMilestoneState(
+              milestone.status,
+              Number.MAX_SAFE_INTEGER,
+              asOfDate,
+            );
         const dateInputLabel = state.includeTimes
           ? "Milestone date and time"
           : "Milestone date";
@@ -2571,12 +2640,7 @@
               </div>
               <select aria-label="Milestone status" data-field="status"
                 data-id="${escapeHtml(milestone.id)}">
-                <option value="pending" ${
-                  milestone.status === "pending" ? "selected" : ""
-                }>Pending</option>
-                <option value="completed" ${
-                  milestone.status === "completed" ? "selected" : ""
-                }>Completed</option>
+                ${renderMilestoneStatusOptions(milestone.status)}
               </select>
               <span class="state-pill state-pill-${timelineState}">
                 ${stateLabel(timelineState)}
@@ -2615,7 +2679,7 @@
         accumulator[milestone.timelineState] += 1;
         return accumulator;
       },
-      { completed: 0, overdue: 0, upcoming: 0, total: 0 },
+      { completed: 0, "in-progress": 0, overdue: 0, upcoming: 0, total: 0 },
     );
 
     elements.asOfInput.type = state.includeTimes ? "datetime-local" : "date";
@@ -2640,6 +2704,7 @@
     elements.showTodayInput.checked = state.showToday;
     elements.totalCount.textContent = String(counts.total);
     elements.completedCount.textContent = String(counts.completed);
+    elements.inProgressCount.textContent = String(counts["in-progress"]);
     elements.overdueCount.textContent = String(counts.overdue);
     elements.upcomingCount.textContent = String(counts.upcoming);
 
@@ -2671,13 +2736,16 @@
   }
 
   function updateMilestone(id, field, value, redrawRows) {
+    const nextValue =
+      field === "status" ? normalizeMilestoneStatus(value) : value;
+
     state.milestones = state.milestones.map(function (milestone) {
       if (milestone.id !== id) {
         return milestone;
       }
 
       return Object.assign({}, milestone, {
-        [field]: value,
+        [field]: nextValue,
       });
     });
     saveState();
@@ -3173,7 +3241,7 @@
   }
 
   function positionStatusMenu(target) {
-    statusMenuPosition = positionFloatingMenu(target, 190, 96);
+    statusMenuPosition = positionFloatingMenu(target, 190, 144);
   }
 
   function findMilestone(milestoneId) {
@@ -3361,7 +3429,7 @@
     updateMilestone(
       milestoneId,
       "status",
-      status === "completed" ? "completed" : "pending",
+      normalizeMilestoneStatus(status),
       true,
     );
   }

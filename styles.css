@@ -8,10 +8,12 @@
   --line-strong: #cbd5e1;
   --teal: #0f766e;
   --green: #16a34a;
+  --blue: #2563eb;
   --amber: #d97706;
   --red: #dc2626;
   --rose: #9f1239;
   --cyan-soft: #ecfeff;
+  --blue-soft: #dbeafe;
   --green-soft: #dcfce7;
   --amber-soft: #fef3c7;
 }
@@ -275,13 +277,13 @@ h1 {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(108px, 1fr));
+  grid-template-columns: repeat(5, minmax(104px, 1fr));
   gap: 8px;
   margin: 0;
 }
 
 .metric-box {
-  min-width: 108px;
+  min-width: 104px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -306,6 +308,10 @@ h1 {
 
 .metric-completed {
   border-color: #86efac;
+}
+
+.metric-progress {
+  border-color: #93c5fd;
 }
 
 .metric-overdue {
@@ -533,6 +539,11 @@ h1 {
 .editor-row-overdue {
   background: #fffbeb;
   box-shadow: inset 5px 0 0 var(--amber);
+}
+
+.editor-row-in-progress {
+  background: #eff6ff;
+  box-shadow: inset 5px 0 0 var(--blue);
 }
 
 .person-avatar {
@@ -1179,6 +1190,12 @@ h1 {
   border: 3px solid var(--amber);
   background: var(--amber-soft);
   color: #7c2d12;
+}
+
+.state-pill-in-progress {
+  border-color: #93c5fd;
+  background: var(--blue-soft);
+  color: #1e40af;
 }
 
 .state-pill-upcoming {
