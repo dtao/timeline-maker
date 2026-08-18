@@ -819,6 +819,22 @@
     });
   }
 
+  function filenameSlug(value) {
+    return (
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "timeline"
+    );
+  }
+
+  function exportFilename(extension) {
+    return `${filenameSlug(state.name)}-${toDateInput(new Date())}.${extension}`;
+  }
+
   function closestMatch(target, selector) {
     return target && typeof target.closest === "function"
       ? target.closest(selector)
@@ -3101,6 +3117,7 @@
   }
 
   function downloadSvg() {
+    const filename = exportFilename("svg");
     const blob = new Blob([exportSvgMarkup()], {
       type: "image/svg+xml;charset=utf-8",
     });
@@ -3108,7 +3125,7 @@
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = "timeline.svg";
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -3150,6 +3167,7 @@
     }
 
     const exportModel = currentTimelineModel;
+    const filename = exportFilename("png");
     const image = new Image();
     const svgBlob = new Blob([svgMarkupForPng()], {
       type: "image/svg+xml;charset=utf-8",
@@ -3180,7 +3198,7 @@
       if (typeof canvas.toBlob === "function") {
         canvas.toBlob(function (blob) {
           if (blob) {
-            saveBlobAsDownload(blob, "timeline.png");
+            saveBlobAsDownload(blob, filename);
           }
         }, "image/png");
         return;
@@ -3191,7 +3209,7 @@
         const link = document.createElement("a");
 
         link.href = dataUrl;
-        link.download = "timeline.png";
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         link.remove();
