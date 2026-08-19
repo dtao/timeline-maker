@@ -1188,6 +1188,10 @@
       return Math.round(timestamp / (15 * 60 * 1000)) * 15 * 60 * 1000;
     }
 
+    return roundTimestampToDay(timestamp);
+  }
+
+  function roundTimestampToDay(timestamp) {
     const date = new Date(timestamp);
     const dayStart = new Date(
       date.getFullYear(),
@@ -1218,6 +1222,20 @@
       ((clampedX - CHART_LEFT) / drawableWidth) *
         Math.max(model.maxTime - model.minTime, 1)
     );
+  }
+
+  function timelineAddPointFromChartX(chartX, model) {
+    const timestamp = chartXToTimestamp(chartX, model);
+    const snappedTimestamp = roundTimestampToDay(timestamp);
+
+    return {
+      at: toDateValueForMode(new Date(snappedTimestamp), model.includeTimes),
+      x: clamp(
+        getX(snappedTimestamp, model.minTime, model.maxTime),
+        CHART_LEFT,
+        CHART_WIDTH - CHART_RIGHT,
+      ),
+    };
   }
 
   function clientXToChartX(clientX, model) {
@@ -1754,6 +1772,7 @@
             data-at="${escapeHtml(timelineAddHover.at)}" role="button"
             tabindex="0" transform="translate(${timelineAddHover.x} ${model.axisY})">
             <title>Add milestone on ${escapeHtml(timelineAddHover.at)}</title>
+            <circle fill="transparent" pointer-events="all" r="18" />
             <circle fill="#ffffff" r="10.5" stroke="#cbd5e1" stroke-width="1.5" />
             <path d="M -4.5 0 H 4.5 M 0 -4.5 V 4.5" fill="none"
               stroke="#0f766e" stroke-linecap="round" stroke-width="1.8" />
@@ -4014,26 +4033,34 @@
       return;
     }
 
-    const x = clamp(
+    const addPoint = timelineAddPointFromChartX(
       clientXToChartX(clientX, currentTimelineModel),
-      CHART_LEFT,
-      CHART_WIDTH - CHART_RIGHT,
-    );
-    const at = dateValueFromTimestamp(
-      chartXToTimestamp(x, currentTimelineModel),
-      state.includeTimes,
+      currentTimelineModel,
     );
 
     if (
       timelineAddHover.visible &&
-      timelineAddHover.at === at &&
-      Math.abs(timelineAddHover.x - x) < 3
+      timelineAddHover.at === addPoint.at &&
+      Math.abs(timelineAddHover.x - addPoint.x) < 3
     ) {
       return;
     }
 
-    timelineAddHover = { at: at, visible: true, x: x };
+    timelineAddHover = { at: addPoint.at, visible: true, x: addPoint.x };
     renderTimelineAndCounts();
+  }
+
+  function addMilestoneFromTimelineClientX(clientX) {
+    if (!currentTimelineModel) {
+      return;
+    }
+
+    const addPoint = timelineAddPointFromChartX(
+      clientXToChartX(clientX, currentTimelineModel),
+      currentTimelineModel,
+    );
+
+    addMilestoneAt(addPoint.at);
   }
 
   function riskUpdateInputForAction(actionTarget) {
@@ -4271,6 +4298,13 @@
 
     if (addTarget) {
       addMilestoneAt(addTarget.dataset.at);
+      return;
+    }
+
+    const axisTarget = closestMatch(event.target, '[data-action="axis-hover"]');
+
+    if (axisTarget) {
+      addMilestoneFromTimelineClientX(event.clientX);
       return;
     }
 
