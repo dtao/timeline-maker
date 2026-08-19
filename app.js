@@ -1238,10 +1238,57 @@
     };
   }
 
-  function clientXToChartX(clientX, model) {
+  function timelineSvgElement() {
     const svg =
       elements.timelineMount.querySelector &&
       elements.timelineMount.querySelector("svg");
+
+    return svg || null;
+  }
+
+  function clientPointToSvgX(clientX, clientY) {
+    const svg = timelineSvgElement();
+
+    if (!svg || typeof svg.getScreenCTM !== "function") {
+      return null;
+    }
+
+    try {
+      const matrix = svg.getScreenCTM();
+
+      if (!matrix || typeof matrix.inverse !== "function") {
+        return null;
+      }
+
+      const inverse = matrix.inverse();
+      const y = typeof clientY === "number" ? clientY : 0;
+
+      if (typeof DOMPoint === "function") {
+        return new DOMPoint(clientX, y).matrixTransform(inverse).x;
+      }
+
+      if (typeof svg.createSVGPoint === "function") {
+        const point = svg.createSVGPoint();
+
+        point.x = clientX;
+        point.y = y;
+        return point.matrixTransform(inverse).x;
+      }
+    } catch (_error) {
+      return null;
+    }
+
+    return null;
+  }
+
+  function clientXToChartX(clientX, model, clientY) {
+    const svgX = clientPointToSvgX(clientX, clientY);
+
+    if (typeof svgX === "number" && Number.isFinite(svgX)) {
+      return svgX;
+    }
+
+    const svg = timelineSvgElement();
     const rect =
       svg && typeof svg.getBoundingClientRect === "function"
         ? svg.getBoundingClientRect()
@@ -4027,14 +4074,14 @@
     }
   }
 
-  function updateTimelineAddHover(clientX) {
+  function updateTimelineAddHover(clientX, clientY) {
     if (!currentTimelineModel || dragState || editingTitleMilestoneId) {
       clearTimelineAddHover(true);
       return;
     }
 
     const addPoint = timelineAddPointFromChartX(
-      clientXToChartX(clientX, currentTimelineModel),
+      clientXToChartX(clientX, currentTimelineModel, clientY),
       currentTimelineModel,
     );
 
@@ -4050,13 +4097,13 @@
     renderTimelineAndCounts();
   }
 
-  function addMilestoneFromTimelineClientX(clientX) {
+  function addMilestoneFromTimelineClientX(clientX, clientY) {
     if (!currentTimelineModel) {
       return;
     }
 
     const addPoint = timelineAddPointFromChartX(
-      clientXToChartX(clientX, currentTimelineModel),
+      clientXToChartX(clientX, currentTimelineModel, clientY),
       currentTimelineModel,
     );
 
@@ -4304,7 +4351,7 @@
     const axisTarget = closestMatch(event.target, '[data-action="axis-hover"]');
 
     if (axisTarget) {
-      addMilestoneFromTimelineClientX(event.clientX);
+      addMilestoneFromTimelineClientX(event.clientX, event.clientY);
       return;
     }
 
@@ -4352,7 +4399,7 @@
         '[data-action="axis-hover"], [data-action="create-milestone-at"]',
       )
     ) {
-      updateTimelineAddHover(event.clientX);
+      updateTimelineAddHover(event.clientX, event.clientY);
       return;
     }
 
@@ -4387,7 +4434,7 @@
       moved: false,
       startChartX: point
         ? point.x
-        : clientXToChartX(event.clientX, currentTimelineModel),
+        : clientXToChartX(event.clientX, currentTimelineModel, event.clientY),
       startClientX: event.clientX,
       target: target,
     };
