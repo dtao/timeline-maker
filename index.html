@@ -53,7 +53,7 @@
 
     <main class="app-shell">
       <header class="app-header">
-        <div>
+        <div class="header-title">
           <p class="eyebrow">Milestone planner</p>
           <h1>Timeline Maker</h1>
           <input
@@ -63,28 +63,51 @@
           />
         </div>
 
-        <dl class="metrics" aria-label="Timeline status summary">
-          <div class="metric-box">
-            <dt>Total</dt>
-            <dd id="totalCount">0</dd>
+        <div class="header-summary">
+          <div
+            class="layout-mode-toggle"
+            role="group"
+            aria-label="Timeline layout"
+          >
+            <button
+              id="horizontalLayoutButton"
+              data-layout-mode="horizontal"
+              type="button"
+            >
+              Horizontal
+            </button>
+            <button
+              id="verticalLayoutButton"
+              data-layout-mode="vertical"
+              type="button"
+            >
+              Vertical
+            </button>
           </div>
-          <div class="metric-box metric-completed">
-            <dt>Complete</dt>
-            <dd id="completedCount">0</dd>
-          </div>
-          <div class="metric-box metric-progress">
-            <dt>In Progress</dt>
-            <dd id="inProgressCount">0</dd>
-          </div>
-          <div class="metric-box metric-overdue">
-            <dt>Overdue</dt>
-            <dd id="overdueCount">0</dd>
-          </div>
-          <div class="metric-box metric-upcoming">
-            <dt>Planned</dt>
-            <dd id="upcomingCount">0</dd>
-          </div>
-        </dl>
+
+          <dl class="metrics" aria-label="Timeline status summary">
+            <div class="metric-box">
+              <dt>Total</dt>
+              <dd id="totalCount">0</dd>
+            </div>
+            <div class="metric-box metric-completed">
+              <dt>Complete</dt>
+              <dd id="completedCount">0</dd>
+            </div>
+            <div class="metric-box metric-progress">
+              <dt>In Progress</dt>
+              <dd id="inProgressCount">0</dd>
+            </div>
+            <div class="metric-box metric-overdue">
+              <dt>Overdue</dt>
+              <dd id="overdueCount">0</dd>
+            </div>
+            <div class="metric-box metric-upcoming">
+              <dt>Planned</dt>
+              <dd id="upcomingCount">0</dd>
+            </div>
+          </dl>
+        </div>
       </header>
 
       <section class="control-panel" aria-label="Timeline controls">
@@ -120,26 +143,6 @@
             <input id="includeTimesInput" type="checkbox" />
             <span>Specify times</span>
           </label>
-          <div
-            class="layout-mode-toggle"
-            role="group"
-            aria-label="Timeline layout"
-          >
-            <button
-              id="horizontalLayoutButton"
-              data-layout-mode="horizontal"
-              type="button"
-            >
-              Horizontal
-            </button>
-            <button
-              id="verticalLayoutButton"
-              data-layout-mode="vertical"
-              type="button"
-            >
-              Vertical
-            </button>
-          </div>
         </div>
 
         <div class="control-actions">
