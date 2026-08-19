@@ -16,6 +16,16 @@
   const LABEL_TOP_PADDING = 48;
   const LABEL_TOP_EXTENT = 76;
   const MIN_CHART_HEIGHT = 560;
+  const VERTICAL_AXIS_TOP = 82;
+  const VERTICAL_AXIS_X = 360;
+  const VERTICAL_BOTTOM_PADDING = 92;
+  const VERTICAL_CHART_WIDTH = 720;
+  const VERTICAL_LABEL_GAP = 58;
+  const VERTICAL_LABEL_HEIGHT = 48;
+  const VERTICAL_LABEL_MAX_WIDTH = 240;
+  const VERTICAL_LABEL_MIN_GAP = 22;
+  const VERTICAL_MIN_AXIS_HEIGHT = 840;
+  const VERTICAL_WEEK_HEIGHT = 72;
   const STORAGE_KEY = "timeline-maker-state-v1";
   const EXPORT_FORMAT_VERSION = 7;
   const DATASET_EXPORT_KIND = "timeline-maker-dataset";
@@ -30,10 +40,12 @@
     { value: "in-progress", label: "In Progress" },
     { value: "completed", label: "Completed" },
   ];
+  const TIMELINE_LAYOUT_MODES = ["horizontal", "vertical"];
 
   const elements = {
     addButton: document.querySelector("#addButton"),
     addListButton: document.querySelector("#addListButton"),
+    appShell: document.querySelector(".app-shell"),
     asOfInput: document.querySelector("#asOfInput"),
     clearRangeButton: document.querySelector("#clearRangeButton"),
     completedCount: document.querySelector("#completedCount"),
@@ -44,6 +56,7 @@
     duplicateTimelineButton: document.querySelector("#duplicateTimelineButton"),
     exportDatasetButton: document.querySelector("#exportDatasetButton"),
     exportTimelineButton: document.querySelector("#exportTimelineButton"),
+    horizontalLayoutButton: document.querySelector("#horizontalLayoutButton"),
     includeTimesInput: document.querySelector("#includeTimesInput"),
     importDatasetButton: document.querySelector("#importDatasetButton"),
     importDatasetInput: document.querySelector("#importDatasetInput"),
@@ -86,6 +99,7 @@
     toggleSidebarButton: document.querySelector("#toggleSidebarButton"),
     totalCount: document.querySelector("#totalCount"),
     upcomingCount: document.querySelector("#upcomingCount"),
+    verticalLayoutButton: document.querySelector("#verticalLayoutButton"),
     workspaceShell: document.querySelector("#workspaceShell"),
   };
 
@@ -97,7 +111,7 @@
   let editingTitleMilestoneId = "";
   let expandedRiskHistoryKey = "";
   let milestoneDialogMilestoneId = "";
-  let timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
+  let timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
   let ownerMenuMilestoneId = "";
   let ownerMenuPosition = { left: 0, top: 0 };
   let personDialogContext = null;
@@ -208,6 +222,12 @@
     }
 
     return "pending";
+  }
+
+  function normalizeLayoutMode(layoutMode) {
+    return TIMELINE_LAYOUT_MODES.includes(layoutMode)
+      ? layoutMode
+      : "horizontal";
   }
 
   function renderMilestoneStatusOptions(selectedStatus) {
@@ -624,6 +644,7 @@
       name: name || "Untitled timeline",
       asOf: toDateInput(now),
       includeTimes: false,
+      layoutMode: "horizontal",
       milestones:
         withSample === false ? [] : createExampleMilestones(now, false),
       rangeEnd: "",
@@ -665,6 +686,7 @@
           ? candidate.asOf
           : toDateValueForMode(now, includeTimes),
       includeTimes: includeTimes,
+      layoutMode: normalizeLayoutMode(candidate.layoutMode),
       milestones: milestones,
       rangeEnd:
         typeof candidate.rangeEnd === "string" ? candidate.rangeEnd : "",
@@ -690,6 +712,7 @@
       activeTimelineId: activeTimeline.id,
       asOf: activeTimeline.asOf,
       includeTimes: activeTimeline.includeTimes,
+      layoutMode: normalizeLayoutMode(activeTimeline.layoutMode),
       milestones: cloneMilestones(activeTimeline.milestones),
       name: activeTimeline.name,
       people: clonePeople(people),
@@ -770,6 +793,7 @@
         name: state.name,
         asOf: state.asOf,
         includeTimes: state.includeTimes,
+        layoutMode: normalizeLayoutMode(state.layoutMode),
         milestones: cloneMilestones(state.milestones),
         showToday: state.showToday,
         rangeEnd: state.rangeEnd,
@@ -788,10 +812,12 @@
     state.name = timeline.name;
     state.asOf = timeline.asOf;
     state.includeTimes = timeline.includeTimes;
+    state.layoutMode = normalizeLayoutMode(timeline.layoutMode);
     state.milestones = cloneMilestones(timeline.milestones);
     state.rangeEnd = timeline.rangeEnd || "";
     state.rangeStart = timeline.rangeStart || "";
     state.showToday = timeline.showToday;
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
   }
 
   function saveState() {
@@ -1224,16 +1250,69 @@
     );
   }
 
-  function timelineAddPointFromChartX(chartX, model) {
-    const timestamp = chartXToTimestamp(chartX, model);
+  function getY(timestamp, minTime, maxTime, axisTop, axisBottom) {
+    return (
+      axisTop +
+      ((timestamp - minTime) / Math.max(maxTime - minTime, 1)) *
+        (axisBottom - axisTop)
+    );
+  }
+
+  function chartYToTimestamp(y, model) {
+    const clampedY = clamp(y, model.axisTop, model.axisBottom);
+
+    return (
+      model.minTime +
+      ((clampedY - model.axisTop) /
+        Math.max(model.axisBottom - model.axisTop, 1)) *
+        Math.max(model.maxTime - model.minTime, 1)
+    );
+  }
+
+  function timestampToTimelineAxisCoordinate(timestamp, model) {
+    if (model.orientation === "vertical") {
+      return getY(
+        timestamp,
+        model.minTime,
+        model.maxTime,
+        model.axisTop,
+        model.axisBottom,
+      );
+    }
+
+    return getX(timestamp, model.minTime, model.maxTime);
+  }
+
+  function timelineAxisCoordinateToTimestamp(axisCoordinate, model) {
+    if (model.orientation === "vertical") {
+      return chartYToTimestamp(axisCoordinate, model);
+    }
+
+    return chartXToTimestamp(axisCoordinate, model);
+  }
+
+  function timelineAddPointFromAxisCoordinate(axisCoordinate, model) {
+    const timestamp = timelineAxisCoordinateToTimestamp(axisCoordinate, model);
     const snappedTimestamp = roundTimestampToDay(timestamp);
+    const snappedAxisCoordinate = timestampToTimelineAxisCoordinate(
+      snappedTimestamp,
+      model,
+    );
 
     return {
       at: toDateValueForMode(new Date(snappedTimestamp), model.includeTimes),
+      y:
+        model.orientation === "vertical"
+          ? clamp(snappedAxisCoordinate, model.axisTop, model.axisBottom)
+          : model.axisY,
       x: clamp(
-        getX(snappedTimestamp, model.minTime, model.maxTime),
-        CHART_LEFT,
-        CHART_WIDTH - CHART_RIGHT,
+        model.orientation === "vertical"
+          ? model.axisX
+          : snappedAxisCoordinate,
+        model.orientation === "vertical" ? 0 : CHART_LEFT,
+        model.orientation === "vertical"
+          ? model.width
+          : CHART_WIDTH - CHART_RIGHT,
       ),
     };
   }
@@ -1246,7 +1325,7 @@
     return svg || null;
   }
 
-  function clientPointToSvgX(clientX, clientY) {
+  function clientPointToSvgPoint(clientX, clientY) {
     const svg = timelineSvgElement();
 
     if (!svg || typeof svg.getScreenCTM !== "function") {
@@ -1264,7 +1343,9 @@
       const y = typeof clientY === "number" ? clientY : 0;
 
       if (typeof DOMPoint === "function") {
-        return new DOMPoint(clientX, y).matrixTransform(inverse).x;
+        const point = new DOMPoint(clientX, y).matrixTransform(inverse);
+
+        return { x: point.x, y: point.y };
       }
 
       if (typeof svg.createSVGPoint === "function") {
@@ -1272,7 +1353,9 @@
 
         point.x = clientX;
         point.y = y;
-        return point.matrixTransform(inverse).x;
+        const transformedPoint = point.matrixTransform(inverse);
+
+        return { x: transformedPoint.x, y: transformedPoint.y };
       }
     } catch (_error) {
       return null;
@@ -1281,32 +1364,43 @@
     return null;
   }
 
-  function clientXToChartX(clientX, model, clientY) {
-    const svgX = clientPointToSvgX(clientX, clientY);
-
-    if (typeof svgX === "number" && Number.isFinite(svgX)) {
-      return svgX;
-    }
-
+  function clientPointToSvgFallback(clientX, clientY, model) {
     const svg = timelineSvgElement();
     const rect =
       svg && typeof svg.getBoundingClientRect === "function"
         ? svg.getBoundingClientRect()
-        : { left: 0, width: model.width };
+        : { height: model.height, left: 0, top: 0, width: model.width };
 
-    return ((clientX - rect.left) / Math.max(rect.width, 1)) * model.width;
+    return {
+      x: ((clientX - rect.left) / Math.max(rect.width, 1)) * model.width,
+      y:
+        ((clientY - rect.top) / Math.max(rect.height, 1)) *
+        Math.max(model.height, 1),
+    };
   }
 
-  function clientDeltaToChartDelta(clientDelta, model) {
-    const svg =
-      elements.timelineMount.querySelector &&
-      elements.timelineMount.querySelector("svg");
-    const rect =
-      svg && typeof svg.getBoundingClientRect === "function"
-        ? svg.getBoundingClientRect()
-        : { width: model.width };
+  function clientPointToSvg(clientX, clientY, model) {
+    const point = clientPointToSvgPoint(clientX, clientY);
 
-    return (clientDelta / Math.max(rect.width, 1)) * model.width;
+    if (
+      point &&
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.y)
+    ) {
+      return point;
+    }
+
+    return clientPointToSvgFallback(clientX, clientY, model);
+  }
+
+  function clientCoordinateToTimelineAxis(clientX, clientY, model) {
+    const point = clientPointToSvg(clientX, clientY, model);
+
+    return model.orientation === "vertical" ? point.y : point.x;
+  }
+
+  function timelinePointAxisCoordinate(point, model) {
+    return model.orientation === "vertical" ? point.y : point.x;
   }
 
   function getWeekendBands(minTime, maxTime) {
@@ -1642,10 +1736,187 @@
       minTime: minTime,
       maxTime: maxTime,
       includeTimes: includeTimes,
+      orientation: "horizontal",
       points: points,
       ticks: buildTicks(minTime, maxTime),
       weekendBands: getWeekendBands(minTime, maxTime),
       width: CHART_WIDTH,
+    };
+  }
+
+  function buildVerticalTicks(minTime, maxTime, axisTop, axisBottom) {
+    const stepWeeks = chooseWeekTickStep(minTime, maxTime);
+    const ticks = [];
+    let cursor = mondayOnOrAfter(minTime);
+
+    while (cursor.getTime() <= maxTime) {
+      const timestamp = cursor.getTime();
+
+      ticks.push({
+        date: new Date(timestamp),
+        y: getY(timestamp, minTime, maxTime, axisTop, axisBottom),
+      });
+      cursor = addWeeks(cursor, stepWeeks);
+    }
+
+    return ticks;
+  }
+
+  function chooseVerticalAxisHeight(minTime, maxTime, pointCount) {
+    const weekCount = Math.max((maxTime - minTime) / WEEK_MS, 1);
+
+    return Math.max(
+      VERTICAL_MIN_AXIS_HEIGHT,
+      Math.ceil(weekCount) * VERTICAL_WEEK_HEIGHT,
+      pointCount * 92,
+    );
+  }
+
+  function assignVerticalLabelPositions(points, includeTimes) {
+    const sideBottoms = {
+      left: VERTICAL_AXIS_TOP - VERTICAL_LABEL_MIN_GAP,
+      right: VERTICAL_AXIS_TOP - VERTICAL_LABEL_MIN_GAP,
+    };
+    let labelBottom = VERTICAL_AXIS_TOP;
+
+    const trackedPoints = points.map(function (point, index) {
+      const title = shortLabel(point.title, 26);
+      const dateLabel = formatMilestoneDate(point.date, includeTimes);
+      const labelWidth = clamp(
+        getLabelWidth(title, dateLabel),
+        LABEL_MIN_WIDTH,
+        VERTICAL_LABEL_MAX_WIDTH,
+      );
+      const labelSide = index % 2 === 0 ? "left" : "right";
+      const labelY = Math.max(
+        point.y,
+        sideBottoms[labelSide] +
+          VERTICAL_LABEL_MIN_GAP +
+          VERTICAL_LABEL_HEIGHT / 2,
+      );
+      const labelLeft =
+        labelSide === "left"
+          ? VERTICAL_AXIS_X - VERTICAL_LABEL_GAP - labelWidth
+          : VERTICAL_AXIS_X + VERTICAL_LABEL_GAP;
+      const labelRight = labelLeft + labelWidth;
+      const pointLabelBottom = labelY + VERTICAL_LABEL_HEIGHT / 2;
+
+      sideBottoms[labelSide] = pointLabelBottom;
+      labelBottom = Math.max(labelBottom, pointLabelBottom);
+
+      return Object.assign({}, point, {
+        dateLabel: dateLabel,
+        labelLeft: labelLeft,
+        labelRight: labelRight,
+        labelSide: labelSide,
+        labelWidth: labelWidth,
+        labelX: labelLeft + labelWidth / 2,
+        labelY: labelY,
+        titleLabel: title,
+      });
+    });
+
+    return {
+      labelBottom: labelBottom,
+      points: trackedPoints,
+    };
+  }
+
+  function buildVerticalTimelineModel(
+    parsedMilestones,
+    markerDate,
+    showMarker,
+    includeTimes,
+    rangeOverride,
+  ) {
+    const markerTime = markerDate ? markerDate.getTime() : null;
+    const timestamps = parsedMilestones.map(function (milestone) {
+      return milestone.timestamp;
+    });
+
+    if (showMarker && markerTime !== null) {
+      timestamps.push(markerTime);
+    }
+
+    const fallbackTime = markerTime || Date.now();
+
+    if (timestamps.length === 0) {
+      timestamps.push(fallbackTime - 7 * DAY_MS, fallbackTime + 7 * DAY_MS);
+    }
+
+    let minTime = Math.min.apply(null, timestamps);
+    let maxTime = Math.max.apply(null, timestamps);
+
+    if (minTime === maxTime) {
+      minTime -= DAY_MS;
+      maxTime += DAY_MS;
+    } else {
+      const padding = Math.max((maxTime - minTime) * 0.1, DAY_MS / 2);
+      minTime -= padding;
+      maxTime += padding;
+    }
+
+    const alignedRange = applyTimelineRangeOverride(
+      minTime,
+      maxTime,
+      rangeOverride || { endTime: null, startTime: null },
+    );
+    minTime = alignedRange.minTime;
+    maxTime = alignedRange.maxTime;
+
+    const axisHeight = chooseVerticalAxisHeight(
+      minTime,
+      maxTime,
+      parsedMilestones.length,
+    );
+    const axisBottom = VERTICAL_AXIS_TOP + axisHeight;
+    const basicPoints = parsedMilestones
+      .slice()
+      .filter(function (milestone) {
+        return milestone.timestamp >= minTime && milestone.timestamp <= maxTime;
+      })
+      .sort(function (a, b) {
+        return a.timestamp - b.timestamp;
+      })
+      .map(function (milestone) {
+        const y = getY(
+          milestone.timestamp,
+          minTime,
+          maxTime,
+          VERTICAL_AXIS_TOP,
+          axisBottom,
+        );
+
+        return Object.assign({}, milestone, {
+          y: y,
+        });
+      });
+    const labelLayout = assignVerticalLabelPositions(basicPoints, includeTimes);
+    const height = Math.max(
+      axisBottom + VERTICAL_BOTTOM_PADDING,
+      labelLayout.labelBottom + 72,
+    );
+
+    return {
+      axisBottom: axisBottom,
+      axisTop: VERTICAL_AXIS_TOP,
+      axisX: VERTICAL_AXIS_X,
+      height: height,
+      markerY:
+        showMarker &&
+        markerTime !== null &&
+        markerTime >= minTime &&
+        markerTime <= maxTime
+          ? getY(markerTime, minTime, maxTime, VERTICAL_AXIS_TOP, axisBottom)
+          : null,
+      minTime: minTime,
+      maxTime: maxTime,
+      includeTimes: includeTimes,
+      orientation: "vertical",
+      points: labelLayout.points,
+      ticks: buildVerticalTicks(minTime, maxTime, VERTICAL_AXIS_TOP, axisBottom),
+      weekendBands: getWeekendBands(minTime, maxTime),
+      width: VERTICAL_CHART_WIDTH,
     };
   }
 
@@ -2092,6 +2363,272 @@
         ${pointMarkup}
       </svg>
     `;
+  }
+
+  function renderVerticalChart(model, showMarker, options) {
+    const renderOptions = options || {};
+    const isExport = Boolean(renderOptions.exportMode);
+    const span = model.maxTime - model.minTime;
+    const gridLeft = 52;
+    const gridRight = model.width - 52;
+    const timelineAddMarkup = !isExport && timelineAddHover.visible
+      ? `
+          <g aria-label="Add milestone on ${escapeHtml(timelineAddHover.at)}"
+            class="timeline-add-control" data-action="create-milestone-at"
+            data-at="${escapeHtml(timelineAddHover.at)}" role="button"
+            tabindex="0" transform="translate(${model.axisX} ${timelineAddHover.y})">
+            <title>Add milestone on ${escapeHtml(timelineAddHover.at)}</title>
+            <circle fill="transparent" pointer-events="all" r="18" />
+            <circle fill="#ffffff" r="10.5" stroke="#cbd5e1" stroke-width="1.5" />
+            <path d="M -4.5 0 H 4.5 M 0 -4.5 V 4.5" fill="none"
+              stroke="#0f766e" stroke-linecap="round" stroke-width="1.8" />
+          </g>
+        `
+      : "";
+    const axisHitTargetMarkup = isExport
+      ? ""
+      : `
+        <rect class="timeline-axis-hit-target" data-action="axis-hover"
+          fill="transparent" height="${model.axisBottom - model.axisTop}"
+          pointer-events="all" width="56"
+          x="${model.axisX - 28}" y="${model.axisTop}" />
+      `;
+    const weekendBandMarkup = model.weekendBands
+      .map(function (band) {
+        const y = getY(
+          band.start,
+          model.minTime,
+          model.maxTime,
+          model.axisTop,
+          model.axisBottom,
+        );
+        const endY = getY(
+          band.end,
+          model.minTime,
+          model.maxTime,
+          model.axisTop,
+          model.axisBottom,
+        );
+
+        return `
+          <rect fill="#f1f5f9" height="${Math.max(endY - y, 0)}"
+            opacity="0.72" width="${gridRight - gridLeft}"
+            x="${gridLeft}" y="${y}" />
+        `;
+      })
+      .join("");
+    const ticksMarkup = model.ticks
+      .map(function (tick) {
+        return `
+          <g>
+            <line stroke="#e2e8f0" stroke-dasharray="4 8" stroke-width="1"
+              x1="${gridLeft}" x2="${gridRight}" y1="${tick.y}" y2="${tick.y}" />
+            <text fill="#64748b" font-size="14" font-weight="700"
+              text-anchor="start" x="64" y="${tick.y - 8}">${escapeHtml(
+                formatTickDate(tick.date, span, model.includeTimes),
+              )}</text>
+          </g>
+        `;
+      })
+      .join("");
+    const markerMarkup =
+      showMarker && model.markerY !== null
+        ? `
+          <g>
+            <line stroke="#dc2626" stroke-dasharray="8 7" stroke-linecap="round"
+              stroke-width="4" x1="${gridLeft}" x2="${gridRight}"
+              y1="${model.markerY}" y2="${model.markerY}" />
+            <rect fill="#dc2626" height="30" rx="6" width="78"
+              x="${model.axisX - 39}" y="${model.markerY - 39}" />
+            <text fill="#ffffff" font-size="15" font-weight="700"
+              text-anchor="middle" x="${model.axisX}" y="${model.markerY - 19}">Today</text>
+          </g>
+        `
+        : "";
+    const emptyMarkup =
+      model.points.length === 0
+        ? `
+          <text fill="#64748b" font-size="20" font-weight="700"
+            text-anchor="middle" x="${model.axisX}" y="${model.axisTop - 34}">
+            Add a milestone
+          </text>
+        `
+        : "";
+    const pointLayouts = model.points.map(function (point) {
+      const style = getMarkerStyle(point.timelineState);
+      const labelOpacity = point.timelineState === "completed" ? 0.56 : 1;
+      const labelRectY = point.labelY - VERTICAL_LABEL_HEIGHT / 2;
+      const titleY = labelRectY + 20;
+      const dateY = labelRectY + 42;
+      const title = escapeHtml(point.titleLabel);
+      const dateLabel = escapeHtml(point.dateLabel);
+      const isLeftLabel = point.labelSide === "left";
+      const connectorStartX = isLeftLabel
+        ? model.axisX - LABEL_BADGE_RADIUS - 1
+        : model.axisX + LABEL_BADGE_RADIUS + 1;
+      const connectorBendX = isLeftLabel ? model.axisX - 36 : model.axisX + 36;
+      const connectorEndX = isLeftLabel ? point.labelRight : point.labelLeft;
+      const actionIconX = isLeftLabel ? point.labelLeft - 13 : point.labelRight + 13;
+      const actionBridgeX = isLeftLabel ? point.labelLeft - 24 : point.labelRight;
+      const editIconY = labelRectY + 13;
+      const deleteIconY = labelRectY + 35;
+      const risk = riskSummary(point);
+      const connectorColor =
+        point.timelineState === "overdue"
+          ? "#d97706"
+          : point.timelineState === "in-progress"
+            ? "#2563eb"
+            : "#94a3b8";
+      const connectorWidth =
+        point.timelineState === "overdue" ||
+        point.timelineState === "in-progress"
+          ? 3
+          : 2;
+
+      return {
+        actionBridgeX: actionBridgeX,
+        actionIconX: actionIconX,
+        connectorBendX: connectorBendX,
+        connectorColor: connectorColor,
+        connectorEndX: connectorEndX,
+        connectorStartX: connectorStartX,
+        connectorWidth: connectorWidth,
+        dateLabel: dateLabel,
+        dateY: dateY,
+        deleteIconY: deleteIconY,
+        editIconY: editIconY,
+        labelOpacity: labelOpacity,
+        labelRectY: labelRectY,
+        point: point,
+        risk: risk,
+        style: style,
+        title: title,
+        titleY: titleY,
+      };
+    });
+    const connectorMarkup = pointLayouts
+      .map(function (layout) {
+        const point = layout.point;
+
+        return `
+          <path d="M ${layout.connectorStartX} ${point.y} H ${layout.connectorBendX} V ${point.labelY} H ${layout.connectorEndX}"
+            fill="none" opacity="${layout.labelOpacity}"
+            stroke="${layout.connectorColor}" stroke-linecap="round"
+            stroke-linejoin="round" stroke-width="${layout.connectorWidth}" />
+        `;
+      })
+      .join("");
+    const pointMaskMarkup = pointLayouts
+      .map(function (layout) {
+        const point = layout.point;
+
+        return `
+          <circle cx="${model.axisX}" cy="${point.y}" fill="#ffffff"
+            r="${LABEL_BADGE_RADIUS + 4}" />
+          ${
+            layout.risk.state === "none"
+              ? ""
+              : `<circle cx="${model.axisX + 19}" cy="${point.y - 18}"
+                  fill="#ffffff" r="10" />`
+          }
+          <rect fill="#ffffff" height="${VERTICAL_LABEL_HEIGHT}" rx="7"
+            width="${point.labelWidth}" x="${point.labelLeft}"
+            y="${layout.labelRectY}" />
+        `;
+      })
+      .join("");
+    const pointMarkup = pointLayouts
+      .map(function (layout) {
+        const point = layout.point;
+        const actionMarkup = isExport
+          ? ""
+          : `
+            <rect class="timeline-action-hover-bridge" fill="transparent"
+              height="${VERTICAL_LABEL_HEIGHT}" pointer-events="all" width="24"
+              x="${layout.actionBridgeX}" y="${layout.labelRectY}" />
+            <g aria-label="Edit ${layout.title}" class="timeline-edit-action"
+              data-action="open-milestone-dialog" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0"
+              transform="translate(${layout.actionIconX} ${layout.editIconY})">
+              <title>Edit ${layout.title}</title>
+              <circle fill="#ffffff" r="9" stroke="#cbd5e1" stroke-width="1.5" />
+              <path d="M -4 4 L -2 0 L 4 -6 L 7 -3 L 1 3 Z"
+                fill="#64748b" />
+              <path d="M -4 4 L 1 3" fill="none" stroke="#334155"
+                stroke-linecap="round" stroke-width="1.2" />
+            </g>
+            <g aria-label="Delete ${layout.title}" class="timeline-delete-action"
+              data-action="delete-milestone" data-id="${escapeHtml(point.id)}"
+              role="button" tabindex="0"
+              transform="translate(${layout.actionIconX} ${layout.deleteIconY})">
+              <title>Delete ${layout.title}</title>
+              <circle fill="#ffffff" r="9" stroke="#fecaca" stroke-width="1.5" />
+              <path d="M -3 -3 L 3 3 M 3 -3 L -3 3" fill="none"
+                stroke="#b91c1c" stroke-linecap="round" stroke-width="1.8" />
+            </g>
+          `;
+
+        return `
+          <g class="timeline-point">
+            <g opacity="${layout.labelOpacity}">
+              <g aria-label="Change status or drag to reschedule ${layout.title}"
+                class="timeline-marker-action" data-action="drag-date"
+                data-id="${escapeHtml(point.id)}" role="button" tabindex="0"
+                transform="translate(${model.axisX} ${point.y})">
+                <circle fill="${layout.style.fill}" opacity="${layout.style.opacity}" r="21"
+                  stroke="${layout.style.stroke}" stroke-width="${layout.style.strokeWidth}" />
+                ${statusIcon(point.timelineState)}
+                <g transform="translate(19 -18)">
+                  ${renderTimelineRiskIndicator(layout.risk)}
+                </g>
+              </g>
+              <g aria-label="Edit title ${layout.title}" class="timeline-title-action"
+                data-action="edit-title" data-id="${escapeHtml(point.id)}"
+                role="button" tabindex="0">
+                <rect fill="#ffffff" height="${VERTICAL_LABEL_HEIGHT}" rx="7"
+                  stroke="#e2e8f0" stroke-width="1"
+                  width="${point.labelWidth}" x="${point.labelLeft}"
+                  y="${layout.labelRectY}" />
+                <text fill="#0f172a" font-size="17" font-weight="800"
+                  text-anchor="middle" x="${point.labelX}" y="${layout.titleY}">${layout.title}</text>
+              </g>
+              <text fill="#64748b" font-size="14" font-weight="600"
+                text-anchor="middle" x="${point.labelX}" y="${layout.dateY}">${layout.dateLabel}</text>
+            </g>
+            ${actionMarkup}
+          </g>
+        `;
+      })
+      .join("");
+
+    return `
+      <svg aria-label="Timeline visual" class="timeline-svg timeline-svg-vertical" role="img"
+        font-family="${escapeHtml(TIMELINE_FONT_FAMILY)}"
+        height="${model.height}" width="${model.width}"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 ${model.width} ${model.height}">
+        <rect fill="#ffffff" height="${model.height}" rx="8"
+          width="${model.width}" />
+        ${weekendBandMarkup}
+        ${ticksMarkup}
+        <line stroke="#000000" stroke-linecap="round"
+          stroke-width="3" x1="${model.axisX}" x2="${model.axisX}"
+          y1="${model.axisTop}" y2="${model.axisBottom}" />
+        ${axisHitTargetMarkup}
+        ${markerMarkup}
+        ${timelineAddMarkup}
+        ${emptyMarkup}
+        ${connectorMarkup}
+        ${pointMaskMarkup}
+        ${pointMarkup}
+      </svg>
+    `;
+  }
+
+  function renderTimelineChart(model, showMarker, options) {
+    return model.orientation === "vertical"
+      ? renderVerticalChart(model, showMarker, options)
+      : renderChart(model, showMarker, options);
   }
 
   function getParsedMilestones(asOfDate) {
@@ -2776,6 +3313,7 @@
   function renderTimelineAndCounts() {
     const asOfDate = parseDateValue(state.asOf, state.includeTimes);
     const parsedMilestones = getParsedMilestones(asOfDate);
+    const isVerticalLayout = state.layoutMode === "vertical";
     const counts = parsedMilestones.reduce(
       function (accumulator, milestone) {
         accumulator.total += 1;
@@ -2805,13 +3343,30 @@
       : "Date";
     elements.includeTimesInput.checked = state.includeTimes;
     elements.showTodayInput.checked = state.showToday;
+    elements.appShell.classList.toggle("layout-vertical", isVerticalLayout);
+    elements.horizontalLayoutButton.classList.toggle(
+      "active",
+      !isVerticalLayout,
+    );
+    elements.verticalLayoutButton.classList.toggle("active", isVerticalLayout);
+    elements.horizontalLayoutButton.setAttribute(
+      "aria-pressed",
+      isVerticalLayout ? "false" : "true",
+    );
+    elements.verticalLayoutButton.setAttribute(
+      "aria-pressed",
+      isVerticalLayout ? "true" : "false",
+    );
     elements.totalCount.textContent = String(counts.total);
     elements.completedCount.textContent = String(counts.completed);
     elements.inProgressCount.textContent = String(counts["in-progress"]);
     elements.overdueCount.textContent = String(counts.overdue);
     elements.upcomingCount.textContent = String(counts.upcoming);
 
-    const model = buildTimelineModel(
+    const modelBuilder = isVerticalLayout
+      ? buildVerticalTimelineModel
+      : buildTimelineModel;
+    const model = modelBuilder(
       parsedMilestones,
       asOfDate,
       state.showToday,
@@ -2823,7 +3378,7 @@
       ),
     );
     currentTimelineModel = model;
-    currentSvgMarkup = renderChart(model, state.showToday);
+    currentSvgMarkup = renderTimelineChart(model, state.showToday);
     elements.timelineMount.innerHTML = currentSvgMarkup;
 
     return asOfDate;
@@ -3109,7 +3664,7 @@
       risks: [],
       status: "pending",
     });
-    timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
     saveAndRender();
   }
 
@@ -3192,7 +3747,10 @@
       return timeline.id !== state.activeTimelineId;
     });
 
-    const nextIndex = Math.min(Math.max(activeIndex, 0), state.timelines.length - 1);
+    const nextIndex = Math.min(
+      Math.max(activeIndex, 0),
+      state.timelines.length - 1,
+    );
     loadTimelineIntoActiveState(state.timelines[nextIndex].id);
     saveAndRender();
   }
@@ -3613,7 +4171,7 @@
       return currentSvgMarkup;
     }
 
-    return renderChart(currentTimelineModel, state.showToday, {
+    return renderTimelineChart(currentTimelineModel, state.showToday, {
       exportMode: true,
     });
   }
@@ -4035,12 +4593,16 @@
     }
   }
 
-  function updateMilestoneDateFromChartX(milestoneId, chartX, model) {
+  function updateMilestoneDateFromAxisCoordinate(
+    milestoneId,
+    axisCoordinate,
+    model,
+  ) {
     if (!model) {
       return;
     }
 
-    const timestamp = chartXToTimestamp(chartX, model);
+    const timestamp = timelineAxisCoordinateToTimestamp(axisCoordinate, model);
     const value = dateValueFromTimestamp(timestamp, state.includeTimes);
     const milestone = state.milestones.find(function (candidate) {
       return candidate.id === milestoneId;
@@ -4053,11 +4615,18 @@
     updateMilestone(milestoneId, "at", value, true);
   }
 
-  function updateMilestoneDateFromDrag(clientX, drag) {
-    updateMilestoneDateFromChartX(
+  function updateMilestoneDateFromDrag(event, drag) {
+    const pointerAxisCoordinate = clientCoordinateToTimelineAxis(
+      event.clientX,
+      event.clientY,
+      drag.model,
+    );
+
+    updateMilestoneDateFromAxisCoordinate(
       drag.milestoneId,
-      drag.startChartX +
-        clientDeltaToChartDelta(clientX - drag.startClientX, drag.model),
+      drag.startAxisCoordinate +
+        pointerAxisCoordinate -
+        drag.startPointerAxisCoordinate,
       drag.model,
     );
   }
@@ -4067,7 +4636,7 @@
       return;
     }
 
-    timelineAddHover = { at: "", visible: false, x: CHART_LEFT };
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
 
     if (redraw) {
       renderTimelineAndCounts();
@@ -4080,8 +4649,8 @@
       return;
     }
 
-    const addPoint = timelineAddPointFromChartX(
-      clientXToChartX(clientX, currentTimelineModel, clientY),
+    const addPoint = timelineAddPointFromAxisCoordinate(
+      clientCoordinateToTimelineAxis(clientX, clientY, currentTimelineModel),
       currentTimelineModel,
     );
 
@@ -4093,7 +4662,12 @@
       return;
     }
 
-    timelineAddHover = { at: addPoint.at, visible: true, x: addPoint.x };
+    timelineAddHover = {
+      at: addPoint.at,
+      visible: true,
+      x: addPoint.x,
+      y: addPoint.y,
+    };
     renderTimelineAndCounts();
   }
 
@@ -4102,8 +4676,8 @@
       return;
     }
 
-    const addPoint = timelineAddPointFromChartX(
-      clientXToChartX(clientX, currentTimelineModel, clientY),
+    const addPoint = timelineAddPointFromAxisCoordinate(
+      clientCoordinateToTimelineAxis(clientX, clientY, currentTimelineModel),
       currentTimelineModel,
     );
 
@@ -4279,6 +4853,22 @@
     saveAndRender();
   });
 
+  elements.horizontalLayoutButton.addEventListener("click", function () {
+    state.layoutMode = "horizontal";
+    closeTitleEditor(false);
+    closeFloatingMenus();
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
+    saveAndRender();
+  });
+
+  elements.verticalLayoutButton.addEventListener("click", function () {
+    state.layoutMode = "vertical";
+    closeTitleEditor(false);
+    closeFloatingMenus();
+    timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
+    saveAndRender();
+  });
+
   elements.nowButton.addEventListener("click", function () {
     state.asOf = toDateValueForMode(new Date(), state.includeTimes);
     saveAndRender();
@@ -4428,14 +5018,21 @@
       currentTimelineModel.points.find(function (candidate) {
         return candidate.id === target.dataset.id;
       });
+    const pointerAxisCoordinate = clientCoordinateToTimelineAxis(
+      event.clientX,
+      event.clientY,
+      currentTimelineModel,
+    );
     dragState = {
       milestoneId: target.dataset.id,
       model: currentTimelineModel,
       moved: false,
-      startChartX: point
-        ? point.x
-        : clientXToChartX(event.clientX, currentTimelineModel, event.clientY),
+      startAxisCoordinate: point
+        ? timelinePointAxisCoordinate(point, currentTimelineModel)
+        : pointerAxisCoordinate,
       startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPointerAxisCoordinate: pointerAxisCoordinate,
       target: target,
     };
 
@@ -4665,7 +5262,12 @@
         return;
       }
 
-      if (Math.abs(event.clientX - dragState.startClientX) > 3) {
+      if (
+        Math.hypot(
+          event.clientX - dragState.startClientX,
+          event.clientY - dragState.startClientY,
+        ) > 3
+      ) {
         dragState.moved = true;
       }
 
@@ -4677,7 +5279,7 @@
         event.preventDefault();
       }
 
-      updateMilestoneDateFromDrag(event.clientX, dragState);
+      updateMilestoneDateFromDrag(event, dragState);
     });
 
     document.addEventListener("pointerup", function (event) {
@@ -4689,7 +5291,7 @@
       dragState = null;
 
       if (completedDrag.moved) {
-        updateMilestoneDateFromDrag(event.clientX, completedDrag);
+        updateMilestoneDateFromDrag(event, completedDrag);
         return;
       }
 
