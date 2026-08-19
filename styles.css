@@ -211,6 +211,12 @@ textarea {
   gap: 8px;
 }
 
+.timeline-actions-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: #e2e8f0;
+}
+
 .workspace-shell.sidebar-collapsed {
   grid-template-columns: 58px minmax(0, 1fr);
 }

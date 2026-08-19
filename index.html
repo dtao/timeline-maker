@@ -29,7 +29,24 @@
           <div class="timeline-actions">
             <button id="newTimelineButton" type="button">+ New</button>
             <button id="duplicateTimelineButton" type="button">Duplicate</button>
+            <button id="exportTimelineButton" type="button">Export timeline</button>
+            <button id="importTimelineButton" type="button">Import timeline</button>
+            <div class="timeline-actions-divider" aria-hidden="true"></div>
+            <button id="exportDatasetButton" type="button">Export data set</button>
+            <button id="importDatasetButton" type="button">Import data set</button>
             <button id="deleteTimelineButton" type="button">Delete</button>
+            <input
+              id="importTimelineInput"
+              class="file-input"
+              type="file"
+              accept="application/json,.json"
+            />
+            <input
+              id="importDatasetInput"
+              class="file-input"
+              type="file"
+              accept="application/json,.json"
+            />
           </div>
         </div>
       </aside>

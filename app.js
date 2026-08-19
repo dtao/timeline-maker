@@ -17,6 +17,9 @@
   const LABEL_TOP_EXTENT = 76;
   const MIN_CHART_HEIGHT = 560;
   const STORAGE_KEY = "timeline-maker-state-v1";
+  const EXPORT_FORMAT_VERSION = 7;
+  const DATASET_EXPORT_KIND = "timeline-maker-dataset";
+  const TIMELINE_EXPORT_KIND = "timeline-maker-timeline";
   const TIMELINE_FONT_FAMILY =
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   const AVATAR_RADIUS = 15;
@@ -39,7 +42,13 @@
     downloadButton: document.querySelector("#downloadButton"),
     downloadPngButton: document.querySelector("#downloadPngButton"),
     duplicateTimelineButton: document.querySelector("#duplicateTimelineButton"),
+    exportDatasetButton: document.querySelector("#exportDatasetButton"),
+    exportTimelineButton: document.querySelector("#exportTimelineButton"),
     includeTimesInput: document.querySelector("#includeTimesInput"),
+    importDatasetButton: document.querySelector("#importDatasetButton"),
+    importDatasetInput: document.querySelector("#importDatasetInput"),
+    importTimelineButton: document.querySelector("#importTimelineButton"),
+    importTimelineInput: document.querySelector("#importTimelineInput"),
     cancelMilestoneButton: document.querySelector("#cancelMilestoneButton"),
     doneMilestoneButton: document.querySelector("#doneMilestoneButton"),
     milestoneDetailsInput: document.querySelector("#milestoneDetailsInput"),
@@ -585,6 +594,14 @@
     });
   }
 
+  function cloneTimeline(timeline) {
+    return Object.assign({}, timeline, {
+      milestones: cloneMilestones(
+        Array.isArray(timeline.milestones) ? timeline.milestones : [],
+      ),
+    });
+  }
+
   function clonePeople(people) {
     return people.map(function (person) {
       return Object.assign({}, person);
@@ -794,7 +811,7 @@
           people: state.people,
           sidebarCollapsed: state.sidebarCollapsed,
           timelines: state.timelines,
-          version: 6,
+          version: EXPORT_FORMAT_VERSION,
         }),
       );
     } catch (_error) {
@@ -833,6 +850,10 @@
 
   function exportFilename(extension) {
     return `${filenameSlug(state.name)}-${toDateInput(new Date())}.${extension}`;
+  }
+
+  function datasetExportFilename() {
+    return `timeline-maker-data-${toDateInput(new Date())}.json`;
   }
 
   function closestMatch(target, selector) {
@@ -3074,16 +3095,10 @@
       state.timelines.find(function (timeline) {
         return timeline.id === state.activeTimelineId;
       }) || state.timelines[0];
-    const timeline = {
+    const timeline = Object.assign(cloneTimeline(activeTimeline), {
       id: makeId(),
       name: `${activeTimeline.name} copy`,
-      asOf: activeTimeline.asOf,
-      includeTimes: activeTimeline.includeTimes,
-      milestones: cloneMilestones(activeTimeline.milestones),
-      rangeEnd: activeTimeline.rangeEnd || "",
-      rangeStart: activeTimeline.rangeStart || "",
-      showToday: activeTimeline.showToday,
-    };
+    });
 
     state.timelines.push(timeline);
     loadTimelineIntoActiveState(timeline.id);
@@ -3113,6 +3128,401 @@
 
     const nextIndex = Math.min(Math.max(activeIndex, 0), state.timelines.length - 1);
     loadTimelineIntoActiveState(state.timelines[nextIndex].id);
+    saveAndRender();
+  }
+
+  function activeTimelineSnapshot() {
+    syncActiveTimelineFromState();
+
+    const activeTimeline =
+      state.timelines.find(function (timeline) {
+        return timeline.id === state.activeTimelineId;
+      }) || state.timelines[0];
+
+    return cloneTimeline(activeTimeline);
+  }
+
+  function referencedPersonIdsForTimeline(timeline) {
+    const personIds = new Set();
+
+    cloneMilestones(timeline.milestones || []).forEach(function (milestone) {
+      if (milestone.ownerId) {
+        personIds.add(milestone.ownerId);
+      }
+
+      milestoneRisks(milestone).forEach(function (risk) {
+        if (risk.ownerId) {
+          personIds.add(risk.ownerId);
+        }
+      });
+    });
+
+    return personIds;
+  }
+
+  function peopleForTimelines(timelines) {
+    const personIds = new Set();
+
+    timelines.forEach(function (timeline) {
+      referencedPersonIdsForTimeline(timeline).forEach(function (personId) {
+        personIds.add(personId);
+      });
+    });
+
+    return clonePeople(
+      state.people.filter(function (person) {
+        return personIds.has(person.id);
+      }),
+    );
+  }
+
+  function datasetExportPayload() {
+    syncActiveTimelineFromState();
+
+    return {
+      kind: DATASET_EXPORT_KIND,
+      version: EXPORT_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      activeTimelineId: state.activeTimelineId,
+      people: clonePeople(state.people),
+      sidebarCollapsed: state.sidebarCollapsed,
+      timelines: state.timelines.map(cloneTimeline),
+    };
+  }
+
+  function timelineExportPayload() {
+    const timeline = activeTimelineSnapshot();
+
+    return {
+      kind: TIMELINE_EXPORT_KIND,
+      version: EXPORT_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      people: peopleForTimelines([timeline]),
+      timeline: timeline,
+    };
+  }
+
+  function saveJsonAsDownload(payload, filename) {
+    saveBlobAsDownload(
+      new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json;charset=utf-8",
+      }),
+      filename,
+    );
+  }
+
+  function exportTimelineData() {
+    saveJsonAsDownload(timelineExportPayload(), exportFilename("json"));
+  }
+
+  function exportDatasetData() {
+    saveJsonAsDownload(datasetExportPayload(), datasetExportFilename());
+  }
+
+  function importAlert(message) {
+    if (typeof window.alert === "function") {
+      window.alert(message);
+    }
+  }
+
+  function readJsonImportFile(file, onImport) {
+    if (!file) {
+      return;
+    }
+
+    if (typeof FileReader !== "function") {
+      importAlert("This browser cannot read local import files here.");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = function () {
+      try {
+        onImport(JSON.parse(String(reader.result || "")));
+      } catch (_error) {
+        importAlert("The selected file is not valid JSON.");
+      }
+    };
+    reader.onerror = function () {
+      importAlert("The selected file could not be read.");
+    };
+    reader.readAsText(file);
+  }
+
+  function isTimelineImportCandidate(candidate) {
+    return (
+      Boolean(candidate) &&
+      typeof candidate === "object" &&
+      Array.isArray(candidate.milestones)
+    );
+  }
+
+  function importPeopleFromPayload(payload) {
+    return normalizePeople(
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload.people
+        : [],
+    );
+  }
+
+  function timelineCandidatesFromImportPayload(payload) {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+
+    if (Array.isArray(payload.timelines)) {
+      return payload.timelines;
+    }
+
+    if (isTimelineImportCandidate(payload.timeline)) {
+      return [payload.timeline];
+    }
+
+    if (isTimelineImportCandidate(payload)) {
+      return [payload];
+    }
+
+    return [];
+  }
+
+  function timelineCandidateFromImportPayload(payload) {
+    const candidates = timelineCandidatesFromImportPayload(payload);
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      Array.isArray(payload.timelines) &&
+      typeof payload.activeTimelineId === "string"
+    ) {
+      return (
+        payload.timelines.find(function (timeline) {
+          return timeline && timeline.id === payload.activeTimelineId;
+        }) || candidates[0]
+      );
+    }
+
+    return candidates[0];
+  }
+
+  function ensureUniqueTimelineIds(timelines) {
+    const seen = new Set();
+
+    return timelines.map(function (timeline) {
+      const nextTimeline = cloneTimeline(timeline);
+
+      if (!nextTimeline.id || seen.has(nextTimeline.id)) {
+        nextTimeline.id = makeId();
+      }
+
+      seen.add(nextTimeline.id);
+      return nextTimeline;
+    });
+  }
+
+  function normalizeImportedDataset(payload) {
+    const people = importPeopleFromPayload(payload);
+    const timelines = ensureUniqueTimelineIds(
+      timelineCandidatesFromImportPayload(payload)
+        .filter(isTimelineImportCandidate)
+        .map(function (timeline, index) {
+          return normalizeTimeline(timeline, index, people);
+        })
+        .filter(Boolean),
+    );
+
+    if (timelines.length === 0) {
+      return null;
+    }
+
+    return stateFromTimelines(
+      timelines,
+      payload && typeof payload.activeTimelineId === "string"
+        ? payload.activeTimelineId
+        : "",
+      payload && typeof payload.sidebarCollapsed === "boolean"
+        ? payload.sidebarCollapsed
+        : state.sidebarCollapsed,
+      people,
+    );
+  }
+
+  function normalizeImportedTimeline(payload) {
+    const people = importPeopleFromPayload(payload);
+    const timelineCandidate = timelineCandidateFromImportPayload(payload);
+    const timeline = isTimelineImportCandidate(timelineCandidate)
+      ? normalizeTimeline(timelineCandidate, 0, people)
+      : null;
+
+    return timeline
+      ? {
+          people: people,
+          timeline: timeline,
+        }
+      : null;
+  }
+
+  function mergeImportedPeople(importedPeople) {
+    const nextPeople = clonePeople(state.people);
+    const usedIds = new Set(
+      nextPeople.map(function (person) {
+        return person.id;
+      }),
+    );
+    const idMap = Object.create(null);
+
+    importedPeople.forEach(function (person, index) {
+      const signature = personSignature(
+        person.name,
+        person.email,
+        person.photoDataUrl,
+      );
+      const existing = signature
+        ? nextPeople.find(function (candidate) {
+            return (
+              personSignature(
+                candidate.name,
+                candidate.email,
+                candidate.photoDataUrl,
+              ) === signature
+            );
+          })
+        : null;
+
+      if (existing) {
+        idMap[person.id] = existing.id;
+        return;
+      }
+
+      const nextPerson = Object.assign({}, person);
+
+      if (!nextPerson.id || usedIds.has(nextPerson.id)) {
+        nextPerson.id = `person-import-${index}-${makeId()}`;
+      }
+
+      usedIds.add(nextPerson.id);
+      idMap[person.id] = nextPerson.id;
+      nextPeople.push(nextPerson);
+    });
+
+    return {
+      idMap: idMap,
+      people: nextPeople,
+    };
+  }
+
+  function importedPersonId(personId, idMap) {
+    return personId && idMap[personId] ? idMap[personId] : personId || "";
+  }
+
+  function remapTimelinePersonIds(timeline, idMap) {
+    return Object.assign(cloneTimeline(timeline), {
+      milestones: cloneMilestones(timeline.milestones).map(function (milestone) {
+        return Object.assign({}, milestone, {
+          ownerId: importedPersonId(milestone.ownerId, idMap),
+          risks: milestoneRisks(milestone).map(function (risk) {
+            return Object.assign({}, risk, {
+              ownerId: importedPersonId(risk.ownerId, idMap),
+              history: Array.isArray(risk.history)
+                ? risk.history.map(function (entry) {
+                    return Object.assign({}, entry);
+                  })
+                : [],
+            });
+          }),
+        });
+      }),
+    });
+  }
+
+  function uniqueTimelineName(name) {
+    const baseName = String(name || "").trim() || "Imported timeline";
+    const existingNames = new Set(
+      state.timelines.map(function (timeline) {
+        return timeline.name;
+      }),
+    );
+    let nextName = baseName;
+    let index = 2;
+
+    while (existingNames.has(nextName)) {
+      nextName = `${baseName} ${index}`;
+      index += 1;
+    }
+
+    return nextName;
+  }
+
+  function closeImportTransientUi() {
+    closeTitleEditor(false);
+    closeFloatingMenus();
+
+    if (elements.milestoneDialog.open) {
+      closeMilestoneDialog();
+    }
+
+    if (elements.personDialog.open) {
+      closePersonDialog();
+    }
+  }
+
+  function importTimelineData(payload) {
+    const imported = normalizeImportedTimeline(payload);
+
+    if (!imported) {
+      importAlert("Choose a Timeline Maker timeline JSON file.");
+      return;
+    }
+
+    syncActiveTimelineFromState();
+
+    const mergedPeople = mergeImportedPeople(imported.people);
+    const timeline = Object.assign(
+      remapTimelinePersonIds(imported.timeline, mergedPeople.idMap),
+      {
+        id: makeId(),
+        name: uniqueTimelineName(imported.timeline.name),
+      },
+    );
+
+    closeImportTransientUi();
+    state.people = mergedPeople.people;
+    state.timelines.push(timeline);
+    loadTimelineIntoActiveState(timeline.id);
+    saveAndRender();
+  }
+
+  function importDatasetData(payload) {
+    const importedState = normalizeImportedDataset(payload);
+
+    if (!importedState) {
+      importAlert("Choose a Timeline Maker data set JSON file.");
+      return;
+    }
+
+    const confirmed =
+      typeof window.confirm !== "function" ||
+      window.confirm(
+        `Replace all current timelines with ${importedState.timelines.length} imported timeline${
+          importedState.timelines.length === 1 ? "" : "s"
+        }?`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    closeImportTransientUi();
+    state.activeTimelineId = importedState.activeTimelineId;
+    state.people = clonePeople(importedState.people);
+    state.sidebarCollapsed = importedState.sidebarCollapsed;
+    state.timelines = importedState.timelines.map(cloneTimeline);
+    loadTimelineIntoActiveState(importedState.activeTimelineId);
     saveAndRender();
   }
 
@@ -3823,6 +4233,28 @@
   elements.newTimelineButton.addEventListener("click", createTimeline);
   elements.duplicateTimelineButton.addEventListener("click", duplicateTimeline);
   elements.deleteTimelineButton.addEventListener("click", deleteTimeline);
+  elements.exportTimelineButton.addEventListener("click", exportTimelineData);
+  elements.exportDatasetButton.addEventListener("click", exportDatasetData);
+  elements.importTimelineButton.addEventListener("click", function () {
+    elements.importTimelineInput.click();
+  });
+  elements.importDatasetButton.addEventListener("click", function () {
+    elements.importDatasetInput.click();
+  });
+  elements.importTimelineInput.addEventListener("change", function (event) {
+    readJsonImportFile(
+      event.target.files && event.target.files[0],
+      importTimelineData,
+    );
+    event.target.value = "";
+  });
+  elements.importDatasetInput.addEventListener("change", function (event) {
+    readJsonImportFile(
+      event.target.files && event.target.files[0],
+      importDatasetData,
+    );
+    event.target.value = "";
+  });
 
   elements.addButton.addEventListener("click", addMilestone);
   elements.addListButton.addEventListener("click", addMilestone);

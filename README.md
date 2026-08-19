@@ -24,6 +24,7 @@ entries, with optional time support.
 - Overdue planned milestones shown with an amber warning signal and thicker border
 - Close milestones stack into non-overlapping label rows with elbow connectors
 - SVG and PNG timeline download with title-and-date filenames
+- JSON import/export for individual timelines and full data sets
 - Browser-local persistence across page refreshes
 
 Uploaded avatar images are resized and saved once per person in browser-local
