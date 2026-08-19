@@ -17,6 +17,7 @@ entries, with optional time support.
 - Date-only inputs by default, with an optional "Specify times" mode
 - Optional fixed timeline start/end range
 - Optional red current-date marker
+- Horizontal and vertical timeline layout modes
 - Light gray weekend bands
 - Planned, in-progress, and completed milestone statuses
 - In-progress milestones shown with a blue play signal
