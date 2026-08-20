@@ -522,6 +522,26 @@ h1 {
   pointer-events: auto;
 }
 
+.timeline-history-overlay {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.timeline-point:hover .timeline-history-overlay,
+.timeline-point:focus-within .timeline-history-overlay {
+  opacity: 1;
+}
+
+.timeline-history-label {
+  fill: #475569;
+  font-size: 10px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-linejoin: round;
+  stroke-width: 3px;
+}
+
 .timeline-axis-hit-target {
   cursor: default;
 }

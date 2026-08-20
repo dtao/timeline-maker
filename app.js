@@ -28,7 +28,7 @@
   const VERTICAL_WEEK_HEIGHT = 72;
   const STORAGE_KEY = "timeline-maker-state-v2";
   const LEGACY_STORAGE_KEY = "timeline-maker-state-v1";
-  const EXPORT_FORMAT_VERSION = 9;
+  const EXPORT_FORMAT_VERSION = 10;
   const DATASET_EXPORT_KIND = "timeline-maker-dataset";
   const DATE_VALUE_TYPE = "timeline-maker-date";
   const TIMELINE_EXPORT_KIND = "timeline-maker-timeline";
@@ -425,6 +425,10 @@
     return includeTimes ? toDateTimeInputValue(value) : toDateInputValue(value);
   }
 
+  function sameDateValueForMode(left, right, includeTimes) {
+    return toInputValue(left, includeTimes) === toInputValue(right, includeTimes);
+  }
+
   function dateWithOffset(anchor, days, hours) {
     const date = new Date(anchor);
     date.setDate(date.getDate() + days);
@@ -447,11 +451,29 @@
     comment,
   ) {
     return {
+      action: "status",
       id: makeId(),
       at: new Date().toISOString(),
       fromStatus: normalizeMilestoneStatus(fromStatus),
       toStatus: normalizeMilestoneStatus(toStatus),
       dueAt: cloneDateValue(milestone.at),
+      comment: String(comment || "").trim(),
+    };
+  }
+
+  function createMilestoneDateHistoryEntry(
+    milestone,
+    fromDueAt,
+    dueAt,
+    comment,
+  ) {
+    return {
+      action: "date",
+      id: makeId(),
+      at: new Date().toISOString(),
+      fromDueAt: cloneDateValue(fromDueAt),
+      dueAt: cloneDateValue(dueAt),
+      status: normalizeMilestoneStatus(milestone.status),
       comment: String(comment || "").trim(),
     };
   }
@@ -812,11 +834,23 @@
               return null;
             }
 
+            const action =
+              entry.action === "date" || entry.fromDueAt || entry.fromDueDate
+                ? "date"
+                : "status";
+            const fromDueAt = normalizeDateValue(
+              entry.fromDueAt || entry.fromDueDate || entry.previousDueAt,
+            );
             const dueAt = normalizeDateValue(
               entry.dueAt || entry.dueDate || entry.atDue,
             );
 
+            if (action === "date" && !fromDueAt && !dueAt) {
+              return null;
+            }
+
             return {
+              action: action,
               id:
                 typeof entry.id === "string" && entry.id.trim()
                   ? entry.id
@@ -825,11 +859,19 @@
                 typeof entry.at === "string" && entry.at.trim()
                   ? entry.at
                   : new Date().toISOString(),
-              fromStatus: normalizeMilestoneStatus(entry.fromStatus),
+              fromDueAt: action === "date" ? fromDueAt : "",
+              fromStatus:
+                action === "status"
+                  ? normalizeMilestoneStatus(entry.fromStatus)
+                  : "",
               toStatus: normalizeMilestoneStatus(
                 entry.toStatus || entry.status,
               ),
               dueAt: dueAt,
+              status:
+                action === "date"
+                  ? normalizeMilestoneStatus(entry.status)
+                  : "",
               comment:
                 typeof entry.comment === "string"
                   ? entry.comment
@@ -905,6 +947,7 @@
       ? history.map(function (entry) {
           return Object.assign({}, entry, {
             dueAt: cloneDateValue(entry.dueAt),
+            fromDueAt: cloneDateValue(entry.fromDueAt),
           });
         })
       : [];
@@ -2408,6 +2451,269 @@
     `;
   }
 
+  function timestampForDateValue(value) {
+    const includeTimes = dateValueIncludesTime(value);
+    const date = parseDateValue(value, includeTimes);
+
+    return date && !Number.isNaN(date.getTime()) ? date.getTime() : null;
+  }
+
+  function timestampForHistoryTime(value) {
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date.getTime();
+  }
+
+  function timestampInModel(timestamp, model) {
+    return (
+      typeof timestamp === "number" &&
+      Number.isFinite(timestamp) &&
+      timestamp >= model.minTime &&
+      timestamp <= model.maxTime
+    );
+  }
+
+  function clampedTimestampForModel(timestamp, model) {
+    return typeof timestamp === "number" && Number.isFinite(timestamp)
+      ? clamp(timestamp, model.minTime, model.maxTime)
+      : null;
+  }
+
+  function historyMarkerTitle(label, value) {
+    return `${label}: ${formatDateValue(value)}`;
+  }
+
+  function latestCompletedHistoryEntry(point) {
+    const completedEntries = milestoneStatusHistoryEntries(point).filter(
+      function (entry) {
+        return normalizeMilestoneStatus(entry.toStatus) === "completed";
+      },
+    );
+
+    return completedEntries[completedEntries.length - 1] || null;
+  }
+
+  function renderHorizontalHistoryOverlay(point, model) {
+    const dateEntries = milestoneDateHistoryEntries(point);
+    const completedEntry = latestCompletedHistoryEntry(point);
+    const completedEntries = completedEntry ? [completedEntry] : [];
+
+    if (dateEntries.length === 0 && completedEntries.length === 0) {
+      return "";
+    }
+
+    const direction = point.labelSide === "top" ? 1 : -1;
+    const baseY = model.axisY + direction * 58;
+    const textOffset = direction > 0 ? 17 : -10;
+    const dateMarkup = dateEntries
+      .map(function (entry, index) {
+        const y = baseY + direction * Math.min(index, 2) * 20;
+        const fromTimestamp = timestampForDateValue(entry.fromDueAt);
+        const dueTimestamp = timestampForDateValue(entry.dueAt);
+        const hasFrom = timestampInModel(fromTimestamp, model);
+        const hasDue = timestampInModel(dueTimestamp, model);
+        const fromX = hasFrom
+          ? timestampToTimelineAxisCoordinate(fromTimestamp, model)
+          : null;
+        const dueX = hasDue
+          ? timestampToTimelineAxisCoordinate(dueTimestamp, model)
+          : null;
+
+        if (!hasFrom && !hasDue) {
+          return "";
+        }
+
+        return `
+          <g>
+            ${
+              hasFrom && hasDue
+                ? `<line stroke="#d97706" stroke-dasharray="4 5"
+                    stroke-linecap="round" stroke-width="2"
+                    x1="${fromX}" x2="${dueX}" y1="${y}" y2="${y}" />`
+                : ""
+            }
+            ${
+              hasFrom
+                ? `<circle cx="${fromX}" cy="${y}" fill="#ffffff" r="5"
+                    stroke="#d97706" stroke-width="2">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Previous due date", entry.fromDueAt),
+                    )}</title>
+                  </circle>`
+                : ""
+            }
+            ${
+              hasDue
+                ? `<g transform="translate(${dueX} ${y})">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Moved due date", entry.dueAt),
+                    )}</title>
+                    <path d="M 0 -7 L 7 0 L 0 7 L -7 0 Z"
+                      fill="#f59e0b" stroke="#92400e" stroke-width="1.5" />
+                    <text class="timeline-history-label" x="0"
+                      y="${textOffset}" text-anchor="middle">moved</text>
+                  </g>`
+                : ""
+            }
+          </g>
+        `;
+      })
+      .join("");
+    const completedMarkup = completedEntries
+      .map(function (entry, index) {
+        const timestamp = timestampForHistoryTime(entry.at);
+        const clampedTimestamp = clampedTimestampForModel(timestamp, model);
+
+        if (clampedTimestamp === null) {
+          return "";
+        }
+
+        const x = timestampToTimelineAxisCoordinate(clampedTimestamp, model);
+        const y =
+          baseY +
+          direction * (dateEntries.length > 0 ? 70 : 0) +
+          direction * index * 20;
+
+        return `
+          <g transform="translate(${x} ${y})">
+            <title>${escapeHtml(
+              `Completed: ${formatHistoryTime(entry.at)}`,
+            )}</title>
+            <circle fill="#16a34a" r="8" stroke="#ffffff" stroke-width="2" />
+            <path d="M -4 0 L -1 3.5 L 5 -4" fill="none"
+              stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="2" />
+            <text class="timeline-history-label" x="0" y="${textOffset}"
+              text-anchor="middle">done</text>
+          </g>
+        `;
+      })
+      .join("");
+
+    return `
+      <g class="timeline-history-overlay" pointer-events="none">
+        <line stroke="#94a3b8" stroke-dasharray="3 5" stroke-width="1.5"
+          x1="${point.x}" x2="${point.x}" y1="${model.axisY}"
+          y2="${baseY}" />
+        ${dateMarkup}
+        ${completedMarkup}
+      </g>
+    `;
+  }
+
+  function renderVerticalHistoryOverlay(point, model) {
+    const dateEntries = milestoneDateHistoryEntries(point);
+    const completedEntry = latestCompletedHistoryEntry(point);
+    const completedEntries = completedEntry ? [completedEntry] : [];
+
+    if (dateEntries.length === 0 && completedEntries.length === 0) {
+      return "";
+    }
+
+    const direction = point.labelSide === "left" ? 1 : -1;
+    const baseX = model.axisX + direction * 82;
+    const textAnchor = direction > 0 ? "start" : "end";
+    const textX = direction * 12;
+    const dateMarkup = dateEntries
+      .map(function (entry, index) {
+        const x = baseX + direction * Math.min(index, 2) * 22;
+        const fromTimestamp = timestampForDateValue(entry.fromDueAt);
+        const dueTimestamp = timestampForDateValue(entry.dueAt);
+        const hasFrom = timestampInModel(fromTimestamp, model);
+        const hasDue = timestampInModel(dueTimestamp, model);
+        const fromY = hasFrom
+          ? timestampToTimelineAxisCoordinate(fromTimestamp, model)
+          : null;
+        const dueY = hasDue
+          ? timestampToTimelineAxisCoordinate(dueTimestamp, model)
+          : null;
+
+        if (!hasFrom && !hasDue) {
+          return "";
+        }
+
+        return `
+          <g>
+            ${
+              hasFrom && hasDue
+                ? `<line stroke="#d97706" stroke-dasharray="4 5"
+                    stroke-linecap="round" stroke-width="2"
+                    x1="${x}" x2="${x}" y1="${fromY}" y2="${dueY}" />`
+                : ""
+            }
+            ${
+              hasFrom
+                ? `<circle cx="${x}" cy="${fromY}" fill="#ffffff" r="5"
+                    stroke="#d97706" stroke-width="2">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Previous due date", entry.fromDueAt),
+                    )}</title>
+                  </circle>`
+                : ""
+            }
+            ${
+              hasDue
+                ? `<g transform="translate(${x} ${dueY})">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Moved due date", entry.dueAt),
+                    )}</title>
+                    <path d="M 0 -7 L 7 0 L 0 7 L -7 0 Z"
+                      fill="#f59e0b" stroke="#92400e" stroke-width="1.5" />
+                    <text class="timeline-history-label" x="${textX}" y="4"
+                      text-anchor="${textAnchor}">moved</text>
+                  </g>`
+                : ""
+            }
+          </g>
+        `;
+      })
+      .join("");
+    const completedMarkup = completedEntries
+      .map(function (entry, index) {
+        const timestamp = timestampForHistoryTime(entry.at);
+        const clampedTimestamp = clampedTimestampForModel(timestamp, model);
+
+        if (clampedTimestamp === null) {
+          return "";
+        }
+
+        const x = baseX + direction * (dateEntries.length > 0 ? 80 : 0);
+        const y =
+          timestampToTimelineAxisCoordinate(clampedTimestamp, model) +
+          index * 20;
+
+        return `
+          <g transform="translate(${x} ${y})">
+            <title>${escapeHtml(
+              `Completed: ${formatHistoryTime(entry.at)}`,
+            )}</title>
+            <circle fill="#16a34a" r="8" stroke="#ffffff" stroke-width="2" />
+            <path d="M -4 0 L -1 3.5 L 5 -4" fill="none"
+              stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="2" />
+            <text class="timeline-history-label" x="${textX}" y="4"
+              text-anchor="${textAnchor}">done</text>
+          </g>
+        `;
+      })
+      .join("");
+
+    return `
+      <g class="timeline-history-overlay" pointer-events="none">
+        <line stroke="#94a3b8" stroke-dasharray="3 5" stroke-width="1.5"
+          x1="${model.axisX}" x2="${baseX}" y1="${point.y}" y2="${point.y}" />
+        ${dateMarkup}
+        ${completedMarkup}
+      </g>
+    `;
+  }
+
+  function renderTimelineHistoryOverlay(point, model) {
+    return model.orientation === "vertical"
+      ? renderVerticalHistoryOverlay(point, model)
+      : renderHorizontalHistoryOverlay(point, model);
+  }
+
   function renderChart(model, showMarker, options) {
     const renderOptions = options || {};
     const isExport = Boolean(renderOptions.exportMode);
@@ -2606,6 +2912,9 @@
     const pointMarkup = pointLayouts
       .map(function (layout, index) {
         const point = layout.point;
+        const historyMarkup = isExport
+          ? ""
+          : renderTimelineHistoryOverlay(point, model);
         const actionMarkup = isExport
           ? ""
           : `
@@ -2636,6 +2945,7 @@
 
         return `
           <g class="timeline-point">
+            ${historyMarkup}
             <g opacity="${layout.labelOpacity}">
               <circle class="timeline-date-handle" cx="${point.x}" cy="${model.axisY}"
                 data-action="drag-date" data-id="${escapeHtml(point.id)}"
@@ -2871,6 +3181,9 @@
     const pointMarkup = pointLayouts
       .map(function (layout) {
         const point = layout.point;
+        const historyMarkup = isExport
+          ? ""
+          : renderTimelineHistoryOverlay(point, model);
         const actionMarkup = isExport
           ? ""
           : `
@@ -2901,6 +3214,7 @@
 
         return `
           <g class="timeline-point">
+            ${historyMarkup}
             <g opacity="${layout.labelOpacity}">
               <g aria-label="Change status or drag to reschedule ${layout.title}"
                 class="timeline-marker-action" data-action="drag-date"
@@ -2993,6 +3307,18 @@
 
   function milestoneStatusHistory(milestone) {
     return Array.isArray(milestone.history) ? milestone.history : [];
+  }
+
+  function milestoneDateHistoryEntries(milestone) {
+    return milestoneStatusHistory(milestone).filter(function (entry) {
+      return entry && entry.action === "date";
+    });
+  }
+
+  function milestoneStatusHistoryEntries(milestone) {
+    return milestoneStatusHistory(milestone).filter(function (entry) {
+      return entry && entry.action !== "date";
+    });
   }
 
   function milestoneStatusLabel(status) {
@@ -3390,18 +3716,43 @@
     return `
       <div class="milestone-history-panel">
         <div class="milestone-history-header">
-          <span>Status history</span>
+          <span>Milestone history</span>
           <strong>${entries.length}</strong>
         </div>
         ${
           entries.length === 0
-            ? '<p class="milestone-history-empty">No status changes yet.</p>'
+            ? '<p class="milestone-history-empty">No changes yet.</p>'
             : `
               <ol class="milestone-history-list">
                 ${entries
                   .slice()
                   .reverse()
                   .map(function (entry) {
+                    if (entry.action === "date") {
+                      const comment = String(entry.comment || "").trim();
+
+                      return `
+                        <li>
+                          <div class="milestone-history-main">
+                            <span>Due date changed</span>
+                            <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                          </div>
+                          <span class="milestone-history-dates">
+                            ${escapeHtml(formatDateValue(entry.fromDueAt))}
+                            &rarr;
+                            ${escapeHtml(formatDateValue(entry.dueAt))}
+                          </span>
+                          ${
+                            comment
+                              ? `<p class="milestone-history-comment">${escapeHtml(
+                                  comment,
+                                )}</p>`
+                              : ""
+                          }
+                        </li>
+                      `;
+                    }
+
                     const toStatus = normalizeMilestoneStatus(entry.toStatus);
                     const dateAction =
                       toStatus === "completed" ? "Completed" : "Changed";
@@ -3825,8 +4176,12 @@
       return;
     }
 
-    const nextValue =
-      field === "at" ? normalizeDateValue(value) : value;
+    if (field === "at") {
+      setMilestoneDate(id, value, redrawRows, { recordHistory: true });
+      return;
+    }
+
+    const nextValue = value;
 
     state.milestones = state.milestones.map(function (milestone) {
       if (milestone.id !== id) {
@@ -3844,6 +4199,95 @@
     } else if (field !== "details") {
       renderTimelineAndCounts();
     }
+  }
+
+  function setMilestoneDate(id, value, redrawRows, options) {
+    const settings = options || {};
+    const nextValue = normalizeDateValue(value);
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== id) {
+        return milestone;
+      }
+
+      const previousValue = cloneDateValue(milestone.at);
+
+      if (
+        sameDateValueForMode(previousValue, nextValue, state.includeTimes)
+      ) {
+        return milestone;
+      }
+
+      changed = true;
+      const nextMilestone = Object.assign({}, milestone, {
+        at: nextValue,
+      });
+
+      if (settings.recordHistory === false) {
+        return nextMilestone;
+      }
+
+      return Object.assign({}, nextMilestone, {
+        history: milestoneStatusHistory(milestone).concat([
+          createMilestoneDateHistoryEntry(
+            milestone,
+            previousValue,
+            nextValue,
+            settings.comment || "",
+          ),
+        ]),
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+
+    if (redrawRows) {
+      render();
+    } else {
+      renderTimelineAndCounts();
+      renderMilestoneDialog();
+    }
+
+    return true;
+  }
+
+  function appendMilestoneDateHistory(id, fromDueAt, dueAt, comment) {
+    if (sameDateValueForMode(fromDueAt, dueAt, state.includeTimes)) {
+      return false;
+    }
+
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== id) {
+        return milestone;
+      }
+
+      changed = true;
+      return Object.assign({}, milestone, {
+        history: milestoneStatusHistory(milestone).concat([
+          createMilestoneDateHistoryEntry(
+            milestone,
+            fromDueAt,
+            dueAt,
+            comment,
+          ),
+        ]),
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+    render();
+    return true;
   }
 
   function setMilestoneStatus(id, status, comment, redrawRows) {
@@ -5076,9 +5520,10 @@
     milestoneId,
     axisCoordinate,
     model,
+    options,
   ) {
     if (!model) {
-      return;
+      return false;
     }
 
     const timestamp = timelineAxisCoordinateToTimestamp(axisCoordinate, model);
@@ -5089,13 +5534,17 @@
 
     if (
       !milestone ||
-      toInputValue(milestone.at, state.includeTimes) ===
-        toInputValue(value, state.includeTimes)
+      sameDateValueForMode(milestone.at, value, state.includeTimes)
     ) {
-      return;
+      return false;
     }
 
-    updateMilestone(milestoneId, "at", value, true);
+    return setMilestoneDate(
+      milestoneId,
+      value,
+      true,
+      options || { recordHistory: true },
+    );
   }
 
   function updateMilestoneDateFromDrag(event, drag) {
@@ -5111,6 +5560,7 @@
         pointerAxisCoordinate -
         drag.startPointerAxisCoordinate,
       drag.model,
+      { recordHistory: false },
     );
   }
 
@@ -5510,6 +5960,7 @@
       milestoneId: target.dataset.id,
       model: currentTimelineModel,
       moved: false,
+      startAt: point ? cloneDateValue(point.at) : "",
       startAxisCoordinate: point
         ? timelinePointAxisCoordinate(point, currentTimelineModel)
         : pointerAxisCoordinate,
@@ -5532,7 +5983,7 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "title" || field === "at" || field === "details") {
+    if (field === "title" || field === "details") {
       updateMilestone(id, field, event.target.value, false);
     }
   });
@@ -5793,6 +6244,23 @@
 
       if (completedDrag.moved) {
         updateMilestoneDateFromDrag(event, completedDrag);
+        const milestone = findMilestone(completedDrag.milestoneId);
+
+        if (
+          milestone &&
+          !sameDateValueForMode(
+            completedDrag.startAt,
+            milestone.at,
+            state.includeTimes,
+          )
+        ) {
+          appendMilestoneDateHistory(
+            completedDrag.milestoneId,
+            completedDrag.startAt,
+            milestone.at,
+            "",
+          );
+        }
         return;
       }
 
