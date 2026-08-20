@@ -14,6 +14,7 @@ entries, with optional time support.
 - Direct visualization editing for titles, dates, owners, status, adding
   milestones from the timeline axis or list view, and hover deletion
 - Multiple saved timelines with select, create, duplicate, delete, and rename
+- Timezone-aware date persistence using the user's local timezone
 - Date-only inputs by default, with an optional "Specify times" mode
 - Optional fixed timeline start/end range
 - Optional red current-date marker

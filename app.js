@@ -26,9 +26,11 @@
   const VERTICAL_LABEL_MIN_GAP = 22;
   const VERTICAL_MIN_AXIS_HEIGHT = 840;
   const VERTICAL_WEEK_HEIGHT = 72;
-  const STORAGE_KEY = "timeline-maker-state-v1";
-  const EXPORT_FORMAT_VERSION = 7;
+  const STORAGE_KEY = "timeline-maker-state-v2";
+  const LEGACY_STORAGE_KEY = "timeline-maker-state-v1";
+  const EXPORT_FORMAT_VERSION = 8;
   const DATASET_EXPORT_KIND = "timeline-maker-dataset";
+  const DATE_VALUE_TYPE = "timeline-maker-date";
   const TIMELINE_EXPORT_KIND = "timeline-maker-timeline";
   const TIMELINE_FONT_FAMILY =
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -135,39 +137,269 @@
     )}`;
   }
 
-  function parseDateValue(value, includeTimes) {
-    if (!value) {
-      return null;
+  function localTimeZone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch (_error) {
+      return "UTC";
     }
+  }
 
-    const match = String(value)
+  function isDateValueObject(value) {
+    return (
+      Boolean(value) &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof value.date === "string"
+    );
+  }
+
+  function parseDatePartsString(value) {
+    const match = String(value || "")
       .trim()
       .match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
 
-    if (match) {
-      const year = Number(match[1]);
-      const month = Number(match[2]) - 1;
-      const day = Number(match[3]);
-      const hour = includeTimes && match[4] ? Number(match[4]) : 0;
-      const minute = includeTimes && match[5] ? Number(match[5]) : 0;
-      const date = new Date(year, month, day, hour, minute);
-
-      return Number.isNaN(date.getTime()) ? null : date;
+    if (!match) {
+      return null;
     }
 
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
+    const parts = {
+      day: Number(match[3]),
+      hasTime: Boolean(match[4]),
+      hour: match[4] ? Number(match[4]) : 0,
+      minute: match[5] ? Number(match[5]) : 0,
+      month: Number(match[2]),
+      year: Number(match[1]),
+    };
+    const date = new Date(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+    );
+
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.getFullYear() !== parts.year ||
+      date.getMonth() !== parts.month - 1 ||
+      date.getDate() !== parts.day ||
+      date.getHours() !== parts.hour ||
+      date.getMinutes() !== parts.minute
+    ) {
+      return null;
+    }
+
+    return parts;
+  }
+
+  function dateValueFromParts(parts, includeTimes, timeZone) {
+    return {
+      type: DATE_VALUE_TYPE,
+      kind: includeTimes ? "date-time" : "date",
+      date: `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`,
+      time: includeTimes ? `${pad(parts.hour)}:${pad(parts.minute)}` : "",
+      timeZone: timeZone || localTimeZone(),
+    };
+  }
+
+  function dateValueFromDate(date, includeTimes) {
+    return dateValueFromParts(
+      {
+        day: date.getDate(),
+        hour: date.getHours(),
+        minute: date.getMinutes(),
+        month: date.getMonth() + 1,
+        year: date.getFullYear(),
+      },
+      includeTimes,
+      localTimeZone(),
+    );
+  }
+
+  function dateValueParts(value) {
+    if (isDateValueObject(value)) {
+      const hasTime =
+        value.kind === "date-time" ||
+        (typeof value.time === "string" && value.time.trim());
+      const parts = parseDatePartsString(
+        `${value.date}${hasTime ? `T${value.time || "00:00"}` : ""}`,
+      );
+
+      return parts
+        ? Object.assign(parts, {
+            hasTime: Boolean(hasTime),
+          })
+        : null;
+    }
+
+    if (typeof value === "string") {
+      return parseDatePartsString(value);
+    }
+
+    return null;
+  }
+
+  function normalizeDateValue(value, includeTimes) {
+    if (!value) {
+      return "";
+    }
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime())
+        ? ""
+        : dateValueFromDate(value, Boolean(includeTimes));
+    }
+
+    if (isDateValueObject(value)) {
+      const parts = dateValueParts(value);
+
+      if (!parts) {
+        return "";
+      }
+
+      return dateValueFromParts(
+        parts,
+        parts.hasTime,
+        typeof value.timeZone === "string" && value.timeZone.trim()
+          ? value.timeZone.trim()
+          : localTimeZone(),
+      );
+    }
+
+    if (typeof value === "string") {
+      const parts = parseDatePartsString(value);
+
+      if (parts) {
+        return dateValueFromParts(parts, parts.hasTime, localTimeZone());
+      }
+
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "" : dateValueFromDate(date, true);
+    }
+
+    return "";
+  }
+
+  function partsInTimeZone(date, timeZone) {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const values = Object.create(null);
+
+    formatter.formatToParts(date).forEach(function (part) {
+      if (part.type !== "literal") {
+        values[part.type] = Number(part.value);
+      }
+    });
+
+    return {
+      day: values.day,
+      hour: values.hour === 24 ? 0 : values.hour,
+      minute: values.minute,
+      month: values.month,
+      year: values.year,
+    };
+  }
+
+  function timeZoneOffsetMs(timestamp, timeZone) {
+    const parts = partsInTimeZone(new Date(timestamp), timeZone);
+
+    return (
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      ) - timestamp
+    );
+  }
+
+  function dateFromZonedParts(parts, timeZone) {
+    const localZone = localTimeZone();
+
+    if (!timeZone || timeZone === localZone) {
+      return new Date(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      );
+    }
+
+    try {
+      const baseTimestamp = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      );
+      const firstOffset = timeZoneOffsetMs(baseTimestamp, timeZone);
+      let timestamp = baseTimestamp - firstOffset;
+      const secondOffset = timeZoneOffsetMs(timestamp, timeZone);
+
+      if (secondOffset !== firstOffset) {
+        timestamp = baseTimestamp - secondOffset;
+      }
+
+      const date = new Date(timestamp);
+      return Number.isNaN(date.getTime())
+        ? new Date(
+            parts.year,
+            parts.month - 1,
+            parts.day,
+            parts.hour,
+            parts.minute,
+          )
+        : date;
+    } catch (_error) {
+      return new Date(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      );
+    }
+  }
+
+  function parseDateValue(value, includeTimes) {
+    const normalizedValue = normalizeDateValue(value);
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const parts = dateValueParts(normalizedValue);
+
+    if (!parts) {
+      return null;
+    }
+
+    if (!includeTimes || normalizedValue.kind === "date") {
+      return new Date(parts.year, parts.month - 1, parts.day);
+    }
+
+    return dateFromZonedParts(parts, normalizedValue.timeZone);
   }
 
   function toDateInputValue(value) {
-    const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+    const normalizedValue = normalizeDateValue(value);
 
-    if (match) {
-      return match[1];
+    if (normalizedValue && normalizedValue.date) {
+      return normalizedValue.date;
     }
 
-    const date = parseDateValue(value, false);
-    return date ? toDateInput(date) : "";
+    return "";
   }
 
   function toDateTimeInputValue(value) {
@@ -176,7 +408,7 @@
   }
 
   function toDateValueForMode(date, includeTimes) {
-    return includeTimes ? toDateTimeInput(date) : toDateInput(date);
+    return dateValueFromDate(date, includeTimes);
   }
 
   function toInputValue(value, includeTimes) {
@@ -583,13 +815,19 @@
           ? candidate.id
           : `saved-${index}-${makeId()}`,
       title: typeof candidate.title === "string" ? candidate.title : "",
-      at: typeof candidate.at === "string" ? candidate.at : "",
+      at: normalizeDateValue(candidate.at),
       details:
         typeof candidate.details === "string" ? candidate.details : "",
       ownerId: ownerId,
       risks: normalizeRisks(candidate.risks, people),
       status: normalizeMilestoneStatus(candidate.status),
     };
+  }
+
+  function cloneDateValue(value) {
+    return isDateValueObject(value)
+      ? Object.assign({}, value)
+      : normalizeDateValue(value);
   }
 
   function cloneRisks(risks) {
@@ -609,6 +847,7 @@
   function cloneMilestones(milestones) {
     return milestones.map(function (milestone) {
       return Object.assign({}, milestone, {
+        at: cloneDateValue(milestone.at),
         risks: cloneRisks(milestone.risks),
       });
     });
@@ -616,9 +855,12 @@
 
   function cloneTimeline(timeline) {
     return Object.assign({}, timeline, {
+      asOf: cloneDateValue(timeline.asOf),
       milestones: cloneMilestones(
         Array.isArray(timeline.milestones) ? timeline.milestones : [],
       ),
+      rangeEnd: cloneDateValue(timeline.rangeEnd),
+      rangeStart: cloneDateValue(timeline.rangeStart),
     });
   }
 
@@ -642,7 +884,7 @@
     return {
       id: makeId(),
       name: name || "Untitled timeline",
-      asOf: toDateInput(now),
+      asOf: toDateValueForMode(now, false),
       includeTimes: false,
       layoutMode: "horizontal",
       milestones:
@@ -682,16 +924,13 @@
           ? candidate.name.trim()
           : `Timeline ${index + 1}`,
       asOf:
-        typeof candidate.asOf === "string"
-          ? candidate.asOf
-          : toDateValueForMode(now, includeTimes),
+        normalizeDateValue(candidate.asOf) ||
+        toDateValueForMode(now, includeTimes),
       includeTimes: includeTimes,
       layoutMode: normalizeLayoutMode(candidate.layoutMode),
       milestones: milestones,
-      rangeEnd:
-        typeof candidate.rangeEnd === "string" ? candidate.rangeEnd : "",
-      rangeStart:
-        typeof candidate.rangeStart === "string" ? candidate.rangeStart : "",
+      rangeEnd: normalizeDateValue(candidate.rangeEnd),
+      rangeStart: normalizeDateValue(candidate.rangeStart),
       showToday:
         typeof candidate.showToday === "boolean" ? candidate.showToday : true,
     };
@@ -710,18 +949,28 @@
 
     return {
       activeTimelineId: activeTimeline.id,
-      asOf: activeTimeline.asOf,
+      asOf: cloneDateValue(activeTimeline.asOf),
       includeTimes: activeTimeline.includeTimes,
       layoutMode: normalizeLayoutMode(activeTimeline.layoutMode),
       milestones: cloneMilestones(activeTimeline.milestones),
       name: activeTimeline.name,
       people: clonePeople(people),
-      rangeEnd: activeTimeline.rangeEnd || "",
-      rangeStart: activeTimeline.rangeStart || "",
+      rangeEnd: cloneDateValue(activeTimeline.rangeEnd),
+      rangeStart: cloneDateValue(activeTimeline.rangeStart),
       showToday: activeTimeline.showToday,
       sidebarCollapsed: Boolean(sidebarCollapsed),
       timelines: timelines,
     };
+  }
+
+  function readStoredState(storage, key) {
+    try {
+      const saved = JSON.parse(storage.getItem(key) || "null");
+
+      return saved && typeof saved === "object" ? saved : null;
+    } catch (_error) {
+      return null;
+    }
   }
 
   function loadSavedState() {
@@ -739,47 +988,45 @@
       return fallback;
     }
 
-    try {
-      const saved = JSON.parse(storage.getItem(STORAGE_KEY) || "null");
+    const saved =
+      readStoredState(storage, STORAGE_KEY) ||
+      readStoredState(storage, LEGACY_STORAGE_KEY);
 
-      if (!saved || typeof saved !== "object") {
-        return fallback;
-      }
-
-      const people = normalizePeople(saved.people);
-
-      if (Array.isArray(saved.timelines)) {
-        const timelines = saved.timelines
-          .map(function (timeline, index) {
-            return normalizeTimeline(timeline, index, people);
-          })
-          .filter(Boolean);
-
-        if (timelines.length > 0) {
-          return stateFromTimelines(
-            timelines,
-            saved.activeTimelineId,
-            saved.sidebarCollapsed,
-            people,
-          );
-        }
-      }
-
-      const legacyTimeline = normalizeTimeline(
-        Object.assign({ id: fallbackTimeline.id, name: "Timeline 1" }, saved),
-        0,
-        people,
-      );
-
-      return stateFromTimelines(
-        [legacyTimeline || fallbackTimeline],
-        legacyTimeline ? legacyTimeline.id : fallbackTimeline.id,
-        false,
-        people,
-      );
-    } catch (_error) {
+    if (!saved) {
       return fallback;
     }
+
+    const people = normalizePeople(saved.people);
+
+    if (Array.isArray(saved.timelines)) {
+      const timelines = saved.timelines
+        .map(function (timeline, index) {
+          return normalizeTimeline(timeline, index, people);
+        })
+        .filter(Boolean);
+
+      if (timelines.length > 0) {
+        return stateFromTimelines(
+          timelines,
+          saved.activeTimelineId,
+          saved.sidebarCollapsed,
+          people,
+        );
+      }
+    }
+
+    const legacyTimeline = normalizeTimeline(
+      Object.assign({ id: fallbackTimeline.id, name: "Timeline 1" }, saved),
+      0,
+      people,
+    );
+
+    return stateFromTimelines(
+      [legacyTimeline || fallbackTimeline],
+      legacyTimeline ? legacyTimeline.id : fallbackTimeline.id,
+      false,
+      people,
+    );
   }
 
   function syncActiveTimelineFromState() {
@@ -791,13 +1038,13 @@
       return {
         id: timeline.id,
         name: state.name,
-        asOf: state.asOf,
+        asOf: cloneDateValue(state.asOf),
         includeTimes: state.includeTimes,
         layoutMode: normalizeLayoutMode(state.layoutMode),
         milestones: cloneMilestones(state.milestones),
         showToday: state.showToday,
-        rangeEnd: state.rangeEnd,
-        rangeStart: state.rangeStart,
+        rangeEnd: cloneDateValue(state.rangeEnd),
+        rangeStart: cloneDateValue(state.rangeStart),
       };
     });
   }
@@ -810,12 +1057,12 @@
 
     state.activeTimelineId = timeline.id;
     state.name = timeline.name;
-    state.asOf = timeline.asOf;
+    state.asOf = cloneDateValue(timeline.asOf);
     state.includeTimes = timeline.includeTimes;
     state.layoutMode = normalizeLayoutMode(timeline.layoutMode);
     state.milestones = cloneMilestones(timeline.milestones);
-    state.rangeEnd = timeline.rangeEnd || "";
-    state.rangeStart = timeline.rangeStart || "";
+    state.rangeEnd = cloneDateValue(timeline.rangeEnd);
+    state.rangeStart = cloneDateValue(timeline.rangeStart);
     state.showToday = timeline.showToday;
     timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
   }
@@ -1233,7 +1480,7 @@
   }
 
   function dateValueFromTimestamp(timestamp, includeTimes) {
-    return toDateValueForMode(
+    return dateValueFromDate(
       new Date(roundTimestampForMode(timestamp, includeTimes)),
       includeTimes,
     );
@@ -1300,7 +1547,10 @@
     );
 
     return {
-      at: toDateValueForMode(new Date(snappedTimestamp), model.includeTimes),
+      at: toInputValue(
+        dateValueFromTimestamp(snappedTimestamp, model.includeTimes),
+        model.includeTimes,
+      ),
       y:
         model.orientation === "vertical"
           ? clamp(snappedAxisCoordinate, model.axisTop, model.axisBottom)
@@ -3395,7 +3645,11 @@
 
   function updateMilestone(id, field, value, redrawRows) {
     const nextValue =
-      field === "status" ? normalizeMilestoneStatus(value) : value;
+      field === "status"
+        ? normalizeMilestoneStatus(value)
+        : field === "at"
+          ? normalizeDateValue(value)
+          : value;
 
     state.milestones = state.milestones.map(function (milestone) {
       if (milestone.id !== id) {
@@ -4608,7 +4862,11 @@
       return candidate.id === milestoneId;
     });
 
-    if (!milestone || milestone.at === value) {
+    if (
+      !milestone ||
+      toInputValue(milestone.at, state.includeTimes) ===
+        toInputValue(value, state.includeTimes)
+    ) {
       return;
     }
 
@@ -4823,17 +5081,17 @@
   }
 
   elements.asOfInput.addEventListener("input", function (event) {
-    state.asOf = event.target.value;
+    state.asOf = normalizeDateValue(event.target.value);
     saveAndRender();
   });
 
   elements.rangeStartInput.addEventListener("input", function (event) {
-    state.rangeStart = event.target.value;
+    state.rangeStart = normalizeDateValue(event.target.value);
     saveAndRender();
   });
 
   elements.rangeEndInput.addEventListener("input", function (event) {
-    state.rangeEnd = event.target.value;
+    state.rangeEnd = normalizeDateValue(event.target.value);
     saveAndRender();
   });
 
