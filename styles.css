@@ -472,6 +472,12 @@ h1 {
   width: 100%;
 }
 
+.timeline-svg > * {
+  transition:
+    filter 140ms ease,
+    opacity 140ms ease;
+}
+
 .timeline-svg-vertical {
   min-width: 640px;
 }
@@ -529,6 +535,29 @@ h1 {
 
 .timeline-point:hover .timeline-history-overlay,
 .timeline-point:focus-within .timeline-history-overlay {
+  opacity: 1;
+}
+
+.timeline-svg:has(.timeline-point:hover .timeline-history-overlay) > :not(.timeline-point),
+.timeline-svg:has(.timeline-point:focus-within .timeline-history-overlay)
+  > :not(.timeline-point) {
+  filter: grayscale(0.45);
+  opacity: 0.2;
+}
+
+.timeline-svg:has(.timeline-point:hover .timeline-history-overlay)
+  .timeline-point:not(:hover),
+.timeline-svg:has(.timeline-point:focus-within .timeline-history-overlay)
+  .timeline-point:not(:focus-within) {
+  filter: grayscale(0.45);
+  opacity: 0.22;
+}
+
+.timeline-svg:has(.timeline-point:hover .timeline-history-overlay)
+  .timeline-point:hover,
+.timeline-svg:has(.timeline-point:focus-within .timeline-history-overlay)
+  .timeline-point:focus-within {
+  filter: none;
   opacity: 1;
 }
 
