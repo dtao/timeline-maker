@@ -210,6 +210,29 @@
           <textarea id="milestoneDetailsInput" placeholder="Add details"></textarea>
         </label>
 
+        <section
+          class="milestone-dialog-status"
+          aria-label="Milestone status history"
+        >
+          <div class="milestone-status-grid">
+            <label class="milestone-field">
+              <span>Status</span>
+              <select id="milestoneDialogStatusSelect"></select>
+            </label>
+            <label class="milestone-field milestone-status-comment-field">
+              <span>Comment</span>
+              <textarea
+                id="milestoneStatusCommentInput"
+                placeholder="Optional status change note"
+              ></textarea>
+            </label>
+            <button id="milestoneStatusUpdateButton" type="button">
+              Update status
+            </button>
+          </div>
+          <div id="milestoneStatusHistory"></div>
+        </section>
+
         <section class="milestone-dialog-risks" aria-label="Milestone risks">
           <div id="milestoneDialogRisks"></div>
         </section>

@@ -16,6 +16,7 @@ entries, with optional time support.
 - Multiple saved timelines with select, create, duplicate, delete, and rename
 - Timezone-aware date persistence using the user's local timezone
 - Date-only inputs by default, with an optional "Specify times" mode
+- Milestone status history with due date snapshots and optional comments
 - Optional fixed timeline start/end range
 - Optional red current-date marker
 - Horizontal and vertical timeline layout modes

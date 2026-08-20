@@ -1183,6 +1183,98 @@ h1 {
   letter-spacing: 0;
 }
 
+.milestone-dialog-status {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.milestone-status-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.milestone-status-comment-field textarea {
+  min-height: 70px;
+}
+
+.milestone-status-grid button {
+  min-height: 42px;
+}
+
+.milestone-history-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.milestone-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.milestone-history-header strong {
+  color: var(--ink);
+}
+
+.milestone-history-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.milestone-history-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.milestone-history-list li {
+  display: grid;
+  gap: 5px;
+  border-left: 3px solid #93c5fd;
+  background: #f8fafc;
+  padding: 8px 10px;
+}
+
+.milestone-history-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.milestone-history-main span {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.milestone-history-main time,
+.milestone-history-dates {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.milestone-history-comment {
+  margin: 0;
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .milestone-dialog-risks {
   display: grid;
   gap: 10px;
@@ -1411,6 +1503,7 @@ h1 {
 
   .risk-controls-header,
   .risk-detail-grid,
+  .milestone-status-grid,
   .risk-row {
     grid-template-columns: 1fr;
   }

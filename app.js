@@ -28,7 +28,7 @@
   const VERTICAL_WEEK_HEIGHT = 72;
   const STORAGE_KEY = "timeline-maker-state-v2";
   const LEGACY_STORAGE_KEY = "timeline-maker-state-v1";
-  const EXPORT_FORMAT_VERSION = 8;
+  const EXPORT_FORMAT_VERSION = 9;
   const DATASET_EXPORT_KIND = "timeline-maker-dataset";
   const DATE_VALUE_TYPE = "timeline-maker-date";
   const TIMELINE_EXPORT_KIND = "timeline-maker-timeline";
@@ -69,9 +69,19 @@
     milestoneDetailsInput: document.querySelector("#milestoneDetailsInput"),
     milestoneDialog: document.querySelector("#milestoneDialog"),
     milestoneDialogRisks: document.querySelector("#milestoneDialogRisks"),
+    milestoneDialogStatusSelect: document.querySelector(
+      "#milestoneDialogStatusSelect",
+    ),
     milestoneDialogTitle: document.querySelector("#milestoneDialogTitle"),
     milestoneForm: document.querySelector("#milestoneForm"),
     milestoneOwnerSelect: document.querySelector("#milestoneOwnerSelect"),
+    milestoneStatusCommentInput: document.querySelector(
+      "#milestoneStatusCommentInput",
+    ),
+    milestoneStatusHistory: document.querySelector("#milestoneStatusHistory"),
+    milestoneStatusUpdateButton: document.querySelector(
+      "#milestoneStatusUpdateButton",
+    ),
     milestoneRows: document.querySelector("#milestoneRows"),
     milestoneTitleInput: document.querySelector("#milestoneTitleInput"),
     newTimelineButton: document.querySelector("#newTimelineButton"),
@@ -430,6 +440,22 @@
     };
   }
 
+  function createMilestoneHistoryEntry(
+    milestone,
+    fromStatus,
+    toStatus,
+    comment,
+  ) {
+    return {
+      id: makeId(),
+      at: new Date().toISOString(),
+      fromStatus: normalizeMilestoneStatus(fromStatus),
+      toStatus: normalizeMilestoneStatus(toStatus),
+      dueAt: cloneDateValue(milestone.at),
+      comment: String(comment || "").trim(),
+    };
+  }
+
   function createRisk(title, ownerId, status, historyMessages) {
     const normalizedStatus = status === "resolved" ? "resolved" : "open";
     const messages =
@@ -516,6 +542,7 @@
         title: "Brief approved",
         at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
         details: "Scope, success metrics, and kickoff owners are confirmed.",
+        history: [],
         ownerId: "person-ari-chen",
         risks: [],
         status: "completed",
@@ -525,6 +552,7 @@
         title: "Data freeze",
         at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
         details: "Reporting inputs are locked before final validation starts.",
+        history: [],
         ownerId: "person-maya-patel",
         risks: [
           createRisk(
@@ -541,6 +569,7 @@
         title: "Design review",
         at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
         details: "Review flow, edge states, and launch-readiness notes.",
+        history: [],
         ownerId: "person-jon-bell",
         risks: [
           createRisk(
@@ -556,6 +585,7 @@
         title: "Beta launch",
         at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
         details: "Invite pilot users and monitor feedback during the first week.",
+        history: [],
         ownerId: "person-sam-rivera",
         risks: [],
         status: "in-progress",
@@ -565,6 +595,7 @@
         title: "Public release",
         at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
         details: "Publish the release package and announce availability.",
+        history: [],
         ownerId: "person-nina-park",
         risks: [],
         status: "pending",
@@ -773,6 +804,44 @@
       : [];
   }
 
+  function normalizeMilestoneHistory(candidates) {
+    return Array.isArray(candidates)
+      ? candidates
+          .map(function (entry, index) {
+            if (!entry || typeof entry !== "object") {
+              return null;
+            }
+
+            const dueAt = normalizeDateValue(
+              entry.dueAt || entry.dueDate || entry.atDue,
+            );
+
+            return {
+              id:
+                typeof entry.id === "string" && entry.id.trim()
+                  ? entry.id
+                  : `milestone-history-${index}-${makeId()}`,
+              at:
+                typeof entry.at === "string" && entry.at.trim()
+                  ? entry.at
+                  : new Date().toISOString(),
+              fromStatus: normalizeMilestoneStatus(entry.fromStatus),
+              toStatus: normalizeMilestoneStatus(
+                entry.toStatus || entry.status,
+              ),
+              dueAt: dueAt,
+              comment:
+                typeof entry.comment === "string"
+                  ? entry.comment
+                  : typeof entry.message === "string"
+                    ? entry.message
+                    : "",
+            };
+          })
+          .filter(Boolean)
+      : [];
+  }
+
   function normalizeMilestone(candidate, index, people) {
     if (!candidate || typeof candidate !== "object") {
       return null;
@@ -818,6 +887,7 @@
       at: normalizeDateValue(candidate.at),
       details:
         typeof candidate.details === "string" ? candidate.details : "",
+      history: normalizeMilestoneHistory(candidate.history),
       ownerId: ownerId,
       risks: normalizeRisks(candidate.risks, people),
       status: normalizeMilestoneStatus(candidate.status),
@@ -828,6 +898,16 @@
     return isDateValueObject(value)
       ? Object.assign({}, value)
       : normalizeDateValue(value);
+  }
+
+  function cloneMilestoneHistory(history) {
+    return Array.isArray(history)
+      ? history.map(function (entry) {
+          return Object.assign({}, entry, {
+            dueAt: cloneDateValue(entry.dueAt),
+          });
+        })
+      : [];
   }
 
   function cloneRisks(risks) {
@@ -848,6 +928,7 @@
     return milestones.map(function (milestone) {
       return Object.assign({}, milestone, {
         at: cloneDateValue(milestone.at),
+        history: cloneMilestoneHistory(milestone.history),
         risks: cloneRisks(milestone.risks),
       });
     });
@@ -2910,6 +2991,38 @@
     return Array.isArray(milestone.risks) ? milestone.risks : [];
   }
 
+  function milestoneStatusHistory(milestone) {
+    return Array.isArray(milestone.history) ? milestone.history : [];
+  }
+
+  function milestoneStatusLabel(status) {
+    const normalizedStatus = normalizeMilestoneStatus(status);
+    const statusOption = MILESTONE_STATUSES.find(function (candidate) {
+      return candidate.value === normalizedStatus;
+    });
+
+    return statusOption ? statusOption.label : "Planned";
+  }
+
+  function dateValueIncludesTime(value) {
+    const normalizedValue = normalizeDateValue(value);
+
+    return Boolean(normalizedValue && normalizedValue.kind === "date-time");
+  }
+
+  function formatDateValue(value) {
+    const normalizedValue = normalizeDateValue(value);
+
+    if (!normalizedValue) {
+      return "No due date";
+    }
+
+    const includeTimes = dateValueIncludesTime(normalizedValue);
+    const date = parseDateValue(normalizedValue, includeTimes);
+
+    return date ? formatDate(date, includeTimes) : "No due date";
+  }
+
   function riskSummary(milestone) {
     const risks = milestoneRisks(milestone);
     const unresolved = risks.filter(function (risk) {
@@ -3271,6 +3384,65 @@
     `;
   }
 
+  function renderMilestoneStatusHistory(milestone) {
+    const entries = milestoneStatusHistory(milestone);
+
+    return `
+      <div class="milestone-history-panel">
+        <div class="milestone-history-header">
+          <span>Status history</span>
+          <strong>${entries.length}</strong>
+        </div>
+        ${
+          entries.length === 0
+            ? '<p class="milestone-history-empty">No status changes yet.</p>'
+            : `
+              <ol class="milestone-history-list">
+                ${entries
+                  .slice()
+                  .reverse()
+                  .map(function (entry) {
+                    const toStatus = normalizeMilestoneStatus(entry.toStatus);
+                    const dateAction =
+                      toStatus === "completed" ? "Completed" : "Changed";
+                    const comment = String(entry.comment || "").trim();
+
+                    return `
+                      <li>
+                        <div class="milestone-history-main">
+                          <span>
+                            ${escapeHtml(milestoneStatusLabel(entry.fromStatus))}
+                            &rarr;
+                            ${escapeHtml(milestoneStatusLabel(toStatus))}
+                          </span>
+                          <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                        </div>
+                        <span class="milestone-history-dates">
+                          Due ${escapeHtml(
+                            formatDateValue(entry.dueAt),
+                          )}
+                          &middot; ${dateAction} ${escapeHtml(
+                            formatHistoryTime(entry.at),
+                          )}
+                        </span>
+                        ${
+                          comment
+                            ? `<p class="milestone-history-comment">${escapeHtml(
+                                comment,
+                              )}</p>`
+                            : ""
+                        }
+                      </li>
+                    `;
+                  })
+                  .join("")}
+              </ol>
+            `
+        }
+      </div>
+    `;
+  }
+
   function renderMilestoneOwnerOptions(milestone) {
     const personOptions = state.people
       .map(function (person) {
@@ -3308,6 +3480,10 @@
     elements.milestoneOwnerSelect.innerHTML =
       renderMilestoneOwnerOptions(milestone);
     elements.milestoneDetailsInput.value = milestone.details || "";
+    elements.milestoneDialogStatusSelect.innerHTML =
+      renderMilestoneStatusOptions(milestone.status);
+    elements.milestoneStatusHistory.innerHTML =
+      renderMilestoneStatusHistory(milestone);
     elements.milestoneDialogRisks.innerHTML = renderRiskControls(
       milestone,
       "dialog",
@@ -3644,12 +3820,13 @@
   }
 
   function updateMilestone(id, field, value, redrawRows) {
+    if (field === "status") {
+      setMilestoneStatus(id, value, "", redrawRows);
+      return;
+    }
+
     const nextValue =
-      field === "status"
-        ? normalizeMilestoneStatus(value)
-        : field === "at"
-          ? normalizeDateValue(value)
-          : value;
+      field === "at" ? normalizeDateValue(value) : value;
 
     state.milestones = state.milestones.map(function (milestone) {
       if (milestone.id !== id) {
@@ -3667,6 +3844,52 @@
     } else if (field !== "details") {
       renderTimelineAndCounts();
     }
+  }
+
+  function setMilestoneStatus(id, status, comment, redrawRows) {
+    const nextStatus = normalizeMilestoneStatus(status);
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== id) {
+        return milestone;
+      }
+
+      const previousStatus = normalizeMilestoneStatus(milestone.status);
+
+      if (previousStatus === nextStatus) {
+        return milestone;
+      }
+
+      changed = true;
+      return Object.assign({}, milestone, {
+        history: milestoneStatusHistory(milestone).concat([
+          createMilestoneHistoryEntry(
+            milestone,
+            previousStatus,
+            nextStatus,
+            comment,
+          ),
+        ]),
+        status: nextStatus,
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+
+    if (redrawRows) {
+      render();
+    } else {
+      renderTimelineAndCounts();
+      renderStatusMenuLayer();
+      renderMilestoneDialog();
+    }
+
+    return true;
   }
 
   function removeMilestone(milestoneId) {
@@ -3896,6 +4119,7 @@
       title: "New milestone",
       at: toDateValueForMode(nextDate, state.includeTimes),
       details: "",
+      history: [],
       ownerId: "",
       risks: [],
       status: "pending",
@@ -3914,6 +4138,7 @@
       title: "New milestone",
       at: toDateValueForMode(date, state.includeTimes),
       details: "",
+      history: [],
       ownerId: "",
       risks: [],
       status: "pending",
@@ -5421,6 +5646,24 @@
 
   elements.milestoneForm.addEventListener("click", function (event) {
     if (handleRiskClick(event)) {
+      return;
+    }
+
+    if (
+      event.target === elements.milestoneStatusUpdateButton &&
+      milestoneDialogMilestoneId
+    ) {
+      const changed = setMilestoneStatus(
+        milestoneDialogMilestoneId,
+        elements.milestoneDialogStatusSelect.value,
+        elements.milestoneStatusCommentInput.value,
+        true,
+      );
+
+      if (changed) {
+        elements.milestoneStatusCommentInput.value = "";
+      }
+
       return;
     }
 
