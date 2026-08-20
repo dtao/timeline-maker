@@ -1218,7 +1218,10 @@ h1 {
 }
 
 .milestone-status-comment-field textarea {
-  min-height: 70px;
+  height: 42px;
+  min-height: 42px;
+  overflow: hidden;
+  resize: none;
 }
 
 .milestone-status-grid button {
