@@ -3728,6 +3728,20 @@
                   .slice()
                   .reverse()
                   .map(function (entry) {
+                    const deleteButton = `
+                      <button
+                        aria-label="Delete history item"
+                        class="milestone-history-delete-button icon-button"
+                        data-action="delete-milestone-history"
+                        data-history-id="${escapeHtml(entry.id)}"
+                        data-id="${escapeHtml(milestone.id)}"
+                        title="Delete history item"
+                        type="button"
+                      >
+                        &times;
+                      </button>
+                    `;
+
                     if (entry.action === "date") {
                       const comment = String(entry.comment || "").trim();
 
@@ -3736,6 +3750,7 @@
                           <div class="milestone-history-main">
                             <span>Due date changed</span>
                             <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                            ${deleteButton}
                           </div>
                           <span class="milestone-history-dates">
                             ${escapeHtml(formatDateValue(entry.fromDueAt))}
@@ -3767,6 +3782,7 @@
                             ${escapeHtml(milestoneStatusLabel(toStatus))}
                           </span>
                           <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                          ${deleteButton}
                         </div>
                         <span class="milestone-history-dates">
                           Due ${escapeHtml(
@@ -4333,6 +4349,43 @@
       renderMilestoneDialog();
     }
 
+    return true;
+  }
+
+  function deleteMilestoneHistoryEntry(milestoneId, historyId) {
+    if (!historyId) {
+      return false;
+    }
+
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== milestoneId) {
+        return milestone;
+      }
+
+      const history = milestoneStatusHistory(milestone);
+      const nextHistory = history.filter(function (entry) {
+        return entry.id !== historyId;
+      });
+
+      if (nextHistory.length === history.length) {
+        return milestone;
+      }
+
+      changed = true;
+      return Object.assign({}, milestone, {
+        history: nextHistory,
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+    renderTimelineAndCounts();
+    renderMilestoneDialog();
     return true;
   }
 
@@ -6097,6 +6150,19 @@
 
   elements.milestoneForm.addEventListener("click", function (event) {
     if (handleRiskClick(event)) {
+      return;
+    }
+
+    const historyDeleteButton = closestMatch(
+      event.target,
+      '[data-action="delete-milestone-history"]',
+    );
+
+    if (historyDeleteButton) {
+      deleteMilestoneHistoryEntry(
+        historyDeleteButton.dataset.id,
+        historyDeleteButton.dataset.historyId,
+      );
       return;
     }
 

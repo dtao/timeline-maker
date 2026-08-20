@@ -1301,13 +1301,14 @@ h1 {
 }
 
 .milestone-history-main {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  align-items: center;
   gap: 10px;
 }
 
 .milestone-history-main span {
+  min-width: 0;
   color: var(--ink);
   font-size: 0.9rem;
   font-weight: 900;
@@ -1318,6 +1319,20 @@ h1 {
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 850;
+}
+
+.milestone-history-main time {
+  white-space: nowrap;
+}
+
+.milestone-history-delete-button {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  border-color: #fee2e2;
+  color: #b91c1c;
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .milestone-history-comment {
