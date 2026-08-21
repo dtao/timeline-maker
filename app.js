@@ -26,9 +26,11 @@
   const VERTICAL_LABEL_MIN_GAP = 22;
   const VERTICAL_MIN_AXIS_HEIGHT = 840;
   const VERTICAL_WEEK_HEIGHT = 72;
-  const STORAGE_KEY = "timeline-maker-state-v1";
-  const EXPORT_FORMAT_VERSION = 7;
+  const STORAGE_KEY = "timeline-maker-state-v2";
+  const LEGACY_STORAGE_KEY = "timeline-maker-state-v1";
+  const EXPORT_FORMAT_VERSION = 10;
   const DATASET_EXPORT_KIND = "timeline-maker-dataset";
+  const DATE_VALUE_TYPE = "timeline-maker-date";
   const TIMELINE_EXPORT_KIND = "timeline-maker-timeline";
   const TIMELINE_FONT_FAMILY =
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -67,9 +69,19 @@
     milestoneDetailsInput: document.querySelector("#milestoneDetailsInput"),
     milestoneDialog: document.querySelector("#milestoneDialog"),
     milestoneDialogRisks: document.querySelector("#milestoneDialogRisks"),
+    milestoneDialogStatusSelect: document.querySelector(
+      "#milestoneDialogStatusSelect",
+    ),
     milestoneDialogTitle: document.querySelector("#milestoneDialogTitle"),
     milestoneForm: document.querySelector("#milestoneForm"),
     milestoneOwnerSelect: document.querySelector("#milestoneOwnerSelect"),
+    milestoneStatusCommentInput: document.querySelector(
+      "#milestoneStatusCommentInput",
+    ),
+    milestoneStatusHistory: document.querySelector("#milestoneStatusHistory"),
+    milestoneStatusUpdateButton: document.querySelector(
+      "#milestoneStatusUpdateButton",
+    ),
     milestoneRows: document.querySelector("#milestoneRows"),
     milestoneTitleInput: document.querySelector("#milestoneTitleInput"),
     newTimelineButton: document.querySelector("#newTimelineButton"),
@@ -135,39 +147,269 @@
     )}`;
   }
 
-  function parseDateValue(value, includeTimes) {
-    if (!value) {
-      return null;
+  function localTimeZone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch (_error) {
+      return "UTC";
     }
+  }
 
-    const match = String(value)
+  function isDateValueObject(value) {
+    return (
+      Boolean(value) &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof value.date === "string"
+    );
+  }
+
+  function parseDatePartsString(value) {
+    const match = String(value || "")
       .trim()
       .match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
 
-    if (match) {
-      const year = Number(match[1]);
-      const month = Number(match[2]) - 1;
-      const day = Number(match[3]);
-      const hour = includeTimes && match[4] ? Number(match[4]) : 0;
-      const minute = includeTimes && match[5] ? Number(match[5]) : 0;
-      const date = new Date(year, month, day, hour, minute);
-
-      return Number.isNaN(date.getTime()) ? null : date;
+    if (!match) {
+      return null;
     }
 
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
+    const parts = {
+      day: Number(match[3]),
+      hasTime: Boolean(match[4]),
+      hour: match[4] ? Number(match[4]) : 0,
+      minute: match[5] ? Number(match[5]) : 0,
+      month: Number(match[2]),
+      year: Number(match[1]),
+    };
+    const date = new Date(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+    );
+
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.getFullYear() !== parts.year ||
+      date.getMonth() !== parts.month - 1 ||
+      date.getDate() !== parts.day ||
+      date.getHours() !== parts.hour ||
+      date.getMinutes() !== parts.minute
+    ) {
+      return null;
+    }
+
+    return parts;
+  }
+
+  function dateValueFromParts(parts, includeTimes, timeZone) {
+    return {
+      type: DATE_VALUE_TYPE,
+      kind: includeTimes ? "date-time" : "date",
+      date: `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`,
+      time: includeTimes ? `${pad(parts.hour)}:${pad(parts.minute)}` : "",
+      timeZone: timeZone || localTimeZone(),
+    };
+  }
+
+  function dateValueFromDate(date, includeTimes) {
+    return dateValueFromParts(
+      {
+        day: date.getDate(),
+        hour: date.getHours(),
+        minute: date.getMinutes(),
+        month: date.getMonth() + 1,
+        year: date.getFullYear(),
+      },
+      includeTimes,
+      localTimeZone(),
+    );
+  }
+
+  function dateValueParts(value) {
+    if (isDateValueObject(value)) {
+      const hasTime =
+        value.kind === "date-time" ||
+        (typeof value.time === "string" && value.time.trim());
+      const parts = parseDatePartsString(
+        `${value.date}${hasTime ? `T${value.time || "00:00"}` : ""}`,
+      );
+
+      return parts
+        ? Object.assign(parts, {
+            hasTime: Boolean(hasTime),
+          })
+        : null;
+    }
+
+    if (typeof value === "string") {
+      return parseDatePartsString(value);
+    }
+
+    return null;
+  }
+
+  function normalizeDateValue(value, includeTimes) {
+    if (!value) {
+      return "";
+    }
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime())
+        ? ""
+        : dateValueFromDate(value, Boolean(includeTimes));
+    }
+
+    if (isDateValueObject(value)) {
+      const parts = dateValueParts(value);
+
+      if (!parts) {
+        return "";
+      }
+
+      return dateValueFromParts(
+        parts,
+        parts.hasTime,
+        typeof value.timeZone === "string" && value.timeZone.trim()
+          ? value.timeZone.trim()
+          : localTimeZone(),
+      );
+    }
+
+    if (typeof value === "string") {
+      const parts = parseDatePartsString(value);
+
+      if (parts) {
+        return dateValueFromParts(parts, parts.hasTime, localTimeZone());
+      }
+
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "" : dateValueFromDate(date, true);
+    }
+
+    return "";
+  }
+
+  function partsInTimeZone(date, timeZone) {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    const values = Object.create(null);
+
+    formatter.formatToParts(date).forEach(function (part) {
+      if (part.type !== "literal") {
+        values[part.type] = Number(part.value);
+      }
+    });
+
+    return {
+      day: values.day,
+      hour: values.hour === 24 ? 0 : values.hour,
+      minute: values.minute,
+      month: values.month,
+      year: values.year,
+    };
+  }
+
+  function timeZoneOffsetMs(timestamp, timeZone) {
+    const parts = partsInTimeZone(new Date(timestamp), timeZone);
+
+    return (
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      ) - timestamp
+    );
+  }
+
+  function dateFromZonedParts(parts, timeZone) {
+    const localZone = localTimeZone();
+
+    if (!timeZone || timeZone === localZone) {
+      return new Date(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      );
+    }
+
+    try {
+      const baseTimestamp = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      );
+      const firstOffset = timeZoneOffsetMs(baseTimestamp, timeZone);
+      let timestamp = baseTimestamp - firstOffset;
+      const secondOffset = timeZoneOffsetMs(timestamp, timeZone);
+
+      if (secondOffset !== firstOffset) {
+        timestamp = baseTimestamp - secondOffset;
+      }
+
+      const date = new Date(timestamp);
+      return Number.isNaN(date.getTime())
+        ? new Date(
+            parts.year,
+            parts.month - 1,
+            parts.day,
+            parts.hour,
+            parts.minute,
+          )
+        : date;
+    } catch (_error) {
+      return new Date(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+      );
+    }
+  }
+
+  function parseDateValue(value, includeTimes) {
+    const normalizedValue = normalizeDateValue(value);
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const parts = dateValueParts(normalizedValue);
+
+    if (!parts) {
+      return null;
+    }
+
+    if (!includeTimes || normalizedValue.kind === "date") {
+      return new Date(parts.year, parts.month - 1, parts.day);
+    }
+
+    return dateFromZonedParts(parts, normalizedValue.timeZone);
   }
 
   function toDateInputValue(value) {
-    const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+    const normalizedValue = normalizeDateValue(value);
 
-    if (match) {
-      return match[1];
+    if (normalizedValue && normalizedValue.date) {
+      return normalizedValue.date;
     }
 
-    const date = parseDateValue(value, false);
-    return date ? toDateInput(date) : "";
+    return "";
   }
 
   function toDateTimeInputValue(value) {
@@ -176,11 +418,15 @@
   }
 
   function toDateValueForMode(date, includeTimes) {
-    return includeTimes ? toDateTimeInput(date) : toDateInput(date);
+    return dateValueFromDate(date, includeTimes);
   }
 
   function toInputValue(value, includeTimes) {
     return includeTimes ? toDateTimeInputValue(value) : toDateInputValue(value);
+  }
+
+  function sameDateValueForMode(left, right, includeTimes) {
+    return toInputValue(left, includeTimes) === toInputValue(right, includeTimes);
   }
 
   function dateWithOffset(anchor, days, hours) {
@@ -195,6 +441,40 @@
       id: makeId(),
       at: new Date().toISOString(),
       message: message,
+    };
+  }
+
+  function createMilestoneHistoryEntry(
+    milestone,
+    fromStatus,
+    toStatus,
+    comment,
+  ) {
+    return {
+      action: "status",
+      id: makeId(),
+      at: new Date().toISOString(),
+      fromStatus: normalizeMilestoneStatus(fromStatus),
+      toStatus: normalizeMilestoneStatus(toStatus),
+      dueAt: cloneDateValue(milestone.at),
+      comment: String(comment || "").trim(),
+    };
+  }
+
+  function createMilestoneDateHistoryEntry(
+    milestone,
+    fromDueAt,
+    dueAt,
+    comment,
+  ) {
+    return {
+      action: "date",
+      id: makeId(),
+      at: new Date().toISOString(),
+      fromDueAt: cloneDateValue(fromDueAt),
+      dueAt: cloneDateValue(dueAt),
+      status: normalizeMilestoneStatus(milestone.status),
+      comment: String(comment || "").trim(),
     };
   }
 
@@ -284,6 +564,7 @@
         title: "Brief approved",
         at: toDateValueForMode(dateWithOffset(anchor, -18, -3), includeTimes),
         details: "Scope, success metrics, and kickoff owners are confirmed.",
+        history: [],
         ownerId: "person-ari-chen",
         risks: [],
         status: "completed",
@@ -293,6 +574,7 @@
         title: "Data freeze",
         at: toDateValueForMode(dateWithOffset(anchor, -9, 2), includeTimes),
         details: "Reporting inputs are locked before final validation starts.",
+        history: [],
         ownerId: "person-maya-patel",
         risks: [
           createRisk(
@@ -309,6 +591,7 @@
         title: "Design review",
         at: toDateValueForMode(dateWithOffset(anchor, -2, -1), includeTimes),
         details: "Review flow, edge states, and launch-readiness notes.",
+        history: [],
         ownerId: "person-jon-bell",
         risks: [
           createRisk(
@@ -324,6 +607,7 @@
         title: "Beta launch",
         at: toDateValueForMode(dateWithOffset(anchor, 6, 1), includeTimes),
         details: "Invite pilot users and monitor feedback during the first week.",
+        history: [],
         ownerId: "person-sam-rivera",
         risks: [],
         status: "in-progress",
@@ -333,6 +617,7 @@
         title: "Public release",
         at: toDateValueForMode(dateWithOffset(anchor, 20, -2), includeTimes),
         details: "Publish the release package and announce availability.",
+        history: [],
         ownerId: "person-nina-park",
         risks: [],
         status: "pending",
@@ -541,6 +826,64 @@
       : [];
   }
 
+  function normalizeMilestoneHistory(candidates) {
+    return Array.isArray(candidates)
+      ? candidates
+          .map(function (entry, index) {
+            if (!entry || typeof entry !== "object") {
+              return null;
+            }
+
+            const action =
+              entry.action === "date" || entry.fromDueAt || entry.fromDueDate
+                ? "date"
+                : "status";
+            const fromDueAt = normalizeDateValue(
+              entry.fromDueAt || entry.fromDueDate || entry.previousDueAt,
+            );
+            const dueAt = normalizeDateValue(
+              entry.dueAt || entry.dueDate || entry.atDue,
+            );
+
+            if (action === "date" && !fromDueAt && !dueAt) {
+              return null;
+            }
+
+            return {
+              action: action,
+              id:
+                typeof entry.id === "string" && entry.id.trim()
+                  ? entry.id
+                  : `milestone-history-${index}-${makeId()}`,
+              at:
+                typeof entry.at === "string" && entry.at.trim()
+                  ? entry.at
+                  : new Date().toISOString(),
+              fromDueAt: action === "date" ? fromDueAt : "",
+              fromStatus:
+                action === "status"
+                  ? normalizeMilestoneStatus(entry.fromStatus)
+                  : "",
+              toStatus: normalizeMilestoneStatus(
+                entry.toStatus || entry.status,
+              ),
+              dueAt: dueAt,
+              status:
+                action === "date"
+                  ? normalizeMilestoneStatus(entry.status)
+                  : "",
+              comment:
+                typeof entry.comment === "string"
+                  ? entry.comment
+                  : typeof entry.message === "string"
+                    ? entry.message
+                    : "",
+            };
+          })
+          .filter(Boolean)
+      : [];
+  }
+
   function normalizeMilestone(candidate, index, people) {
     if (!candidate || typeof candidate !== "object") {
       return null;
@@ -583,13 +926,31 @@
           ? candidate.id
           : `saved-${index}-${makeId()}`,
       title: typeof candidate.title === "string" ? candidate.title : "",
-      at: typeof candidate.at === "string" ? candidate.at : "",
+      at: normalizeDateValue(candidate.at),
       details:
         typeof candidate.details === "string" ? candidate.details : "",
+      history: normalizeMilestoneHistory(candidate.history),
       ownerId: ownerId,
       risks: normalizeRisks(candidate.risks, people),
       status: normalizeMilestoneStatus(candidate.status),
     };
+  }
+
+  function cloneDateValue(value) {
+    return isDateValueObject(value)
+      ? Object.assign({}, value)
+      : normalizeDateValue(value);
+  }
+
+  function cloneMilestoneHistory(history) {
+    return Array.isArray(history)
+      ? history.map(function (entry) {
+          return Object.assign({}, entry, {
+            dueAt: cloneDateValue(entry.dueAt),
+            fromDueAt: cloneDateValue(entry.fromDueAt),
+          });
+        })
+      : [];
   }
 
   function cloneRisks(risks) {
@@ -609,6 +970,8 @@
   function cloneMilestones(milestones) {
     return milestones.map(function (milestone) {
       return Object.assign({}, milestone, {
+        at: cloneDateValue(milestone.at),
+        history: cloneMilestoneHistory(milestone.history),
         risks: cloneRisks(milestone.risks),
       });
     });
@@ -616,9 +979,12 @@
 
   function cloneTimeline(timeline) {
     return Object.assign({}, timeline, {
+      asOf: cloneDateValue(timeline.asOf),
       milestones: cloneMilestones(
         Array.isArray(timeline.milestones) ? timeline.milestones : [],
       ),
+      rangeEnd: cloneDateValue(timeline.rangeEnd),
+      rangeStart: cloneDateValue(timeline.rangeStart),
     });
   }
 
@@ -642,7 +1008,7 @@
     return {
       id: makeId(),
       name: name || "Untitled timeline",
-      asOf: toDateInput(now),
+      asOf: toDateValueForMode(now, false),
       includeTimes: false,
       layoutMode: "horizontal",
       milestones:
@@ -682,16 +1048,13 @@
           ? candidate.name.trim()
           : `Timeline ${index + 1}`,
       asOf:
-        typeof candidate.asOf === "string"
-          ? candidate.asOf
-          : toDateValueForMode(now, includeTimes),
+        normalizeDateValue(candidate.asOf) ||
+        toDateValueForMode(now, includeTimes),
       includeTimes: includeTimes,
       layoutMode: normalizeLayoutMode(candidate.layoutMode),
       milestones: milestones,
-      rangeEnd:
-        typeof candidate.rangeEnd === "string" ? candidate.rangeEnd : "",
-      rangeStart:
-        typeof candidate.rangeStart === "string" ? candidate.rangeStart : "",
+      rangeEnd: normalizeDateValue(candidate.rangeEnd),
+      rangeStart: normalizeDateValue(candidate.rangeStart),
       showToday:
         typeof candidate.showToday === "boolean" ? candidate.showToday : true,
     };
@@ -710,18 +1073,28 @@
 
     return {
       activeTimelineId: activeTimeline.id,
-      asOf: activeTimeline.asOf,
+      asOf: cloneDateValue(activeTimeline.asOf),
       includeTimes: activeTimeline.includeTimes,
       layoutMode: normalizeLayoutMode(activeTimeline.layoutMode),
       milestones: cloneMilestones(activeTimeline.milestones),
       name: activeTimeline.name,
       people: clonePeople(people),
-      rangeEnd: activeTimeline.rangeEnd || "",
-      rangeStart: activeTimeline.rangeStart || "",
+      rangeEnd: cloneDateValue(activeTimeline.rangeEnd),
+      rangeStart: cloneDateValue(activeTimeline.rangeStart),
       showToday: activeTimeline.showToday,
       sidebarCollapsed: Boolean(sidebarCollapsed),
       timelines: timelines,
     };
+  }
+
+  function readStoredState(storage, key) {
+    try {
+      const saved = JSON.parse(storage.getItem(key) || "null");
+
+      return saved && typeof saved === "object" ? saved : null;
+    } catch (_error) {
+      return null;
+    }
   }
 
   function loadSavedState() {
@@ -739,47 +1112,45 @@
       return fallback;
     }
 
-    try {
-      const saved = JSON.parse(storage.getItem(STORAGE_KEY) || "null");
+    const saved =
+      readStoredState(storage, STORAGE_KEY) ||
+      readStoredState(storage, LEGACY_STORAGE_KEY);
 
-      if (!saved || typeof saved !== "object") {
-        return fallback;
-      }
-
-      const people = normalizePeople(saved.people);
-
-      if (Array.isArray(saved.timelines)) {
-        const timelines = saved.timelines
-          .map(function (timeline, index) {
-            return normalizeTimeline(timeline, index, people);
-          })
-          .filter(Boolean);
-
-        if (timelines.length > 0) {
-          return stateFromTimelines(
-            timelines,
-            saved.activeTimelineId,
-            saved.sidebarCollapsed,
-            people,
-          );
-        }
-      }
-
-      const legacyTimeline = normalizeTimeline(
-        Object.assign({ id: fallbackTimeline.id, name: "Timeline 1" }, saved),
-        0,
-        people,
-      );
-
-      return stateFromTimelines(
-        [legacyTimeline || fallbackTimeline],
-        legacyTimeline ? legacyTimeline.id : fallbackTimeline.id,
-        false,
-        people,
-      );
-    } catch (_error) {
+    if (!saved) {
       return fallback;
     }
+
+    const people = normalizePeople(saved.people);
+
+    if (Array.isArray(saved.timelines)) {
+      const timelines = saved.timelines
+        .map(function (timeline, index) {
+          return normalizeTimeline(timeline, index, people);
+        })
+        .filter(Boolean);
+
+      if (timelines.length > 0) {
+        return stateFromTimelines(
+          timelines,
+          saved.activeTimelineId,
+          saved.sidebarCollapsed,
+          people,
+        );
+      }
+    }
+
+    const legacyTimeline = normalizeTimeline(
+      Object.assign({ id: fallbackTimeline.id, name: "Timeline 1" }, saved),
+      0,
+      people,
+    );
+
+    return stateFromTimelines(
+      [legacyTimeline || fallbackTimeline],
+      legacyTimeline ? legacyTimeline.id : fallbackTimeline.id,
+      false,
+      people,
+    );
   }
 
   function syncActiveTimelineFromState() {
@@ -791,13 +1162,13 @@
       return {
         id: timeline.id,
         name: state.name,
-        asOf: state.asOf,
+        asOf: cloneDateValue(state.asOf),
         includeTimes: state.includeTimes,
         layoutMode: normalizeLayoutMode(state.layoutMode),
         milestones: cloneMilestones(state.milestones),
         showToday: state.showToday,
-        rangeEnd: state.rangeEnd,
-        rangeStart: state.rangeStart,
+        rangeEnd: cloneDateValue(state.rangeEnd),
+        rangeStart: cloneDateValue(state.rangeStart),
       };
     });
   }
@@ -810,12 +1181,12 @@
 
     state.activeTimelineId = timeline.id;
     state.name = timeline.name;
-    state.asOf = timeline.asOf;
+    state.asOf = cloneDateValue(timeline.asOf);
     state.includeTimes = timeline.includeTimes;
     state.layoutMode = normalizeLayoutMode(timeline.layoutMode);
     state.milestones = cloneMilestones(timeline.milestones);
-    state.rangeEnd = timeline.rangeEnd || "";
-    state.rangeStart = timeline.rangeStart || "";
+    state.rangeEnd = cloneDateValue(timeline.rangeEnd);
+    state.rangeStart = cloneDateValue(timeline.rangeStart);
     state.showToday = timeline.showToday;
     timelineAddHover = { at: "", visible: false, x: CHART_LEFT, y: 0 };
   }
@@ -1233,7 +1604,7 @@
   }
 
   function dateValueFromTimestamp(timestamp, includeTimes) {
-    return toDateValueForMode(
+    return dateValueFromDate(
       new Date(roundTimestampForMode(timestamp, includeTimes)),
       includeTimes,
     );
@@ -1300,7 +1671,10 @@
     );
 
     return {
-      at: toDateValueForMode(new Date(snappedTimestamp), model.includeTimes),
+      at: toInputValue(
+        dateValueFromTimestamp(snappedTimestamp, model.includeTimes),
+        model.includeTimes,
+      ),
       y:
         model.orientation === "vertical"
           ? clamp(snappedAxisCoordinate, model.axisTop, model.axisBottom)
@@ -2077,6 +2451,269 @@
     `;
   }
 
+  function timestampForDateValue(value) {
+    const includeTimes = dateValueIncludesTime(value);
+    const date = parseDateValue(value, includeTimes);
+
+    return date && !Number.isNaN(date.getTime()) ? date.getTime() : null;
+  }
+
+  function timestampForHistoryTime(value) {
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date.getTime();
+  }
+
+  function timestampInModel(timestamp, model) {
+    return (
+      typeof timestamp === "number" &&
+      Number.isFinite(timestamp) &&
+      timestamp >= model.minTime &&
+      timestamp <= model.maxTime
+    );
+  }
+
+  function clampedTimestampForModel(timestamp, model) {
+    return typeof timestamp === "number" && Number.isFinite(timestamp)
+      ? clamp(timestamp, model.minTime, model.maxTime)
+      : null;
+  }
+
+  function historyMarkerTitle(label, value) {
+    return `${label}: ${formatDateValue(value)}`;
+  }
+
+  function latestCompletedHistoryEntry(point) {
+    const completedEntries = milestoneStatusHistoryEntries(point).filter(
+      function (entry) {
+        return normalizeMilestoneStatus(entry.toStatus) === "completed";
+      },
+    );
+
+    return completedEntries[completedEntries.length - 1] || null;
+  }
+
+  function renderHorizontalHistoryOverlay(point, model) {
+    const dateEntries = milestoneDateHistoryEntries(point);
+    const completedEntry = latestCompletedHistoryEntry(point);
+    const completedEntries = completedEntry ? [completedEntry] : [];
+
+    if (dateEntries.length === 0 && completedEntries.length === 0) {
+      return "";
+    }
+
+    const direction = point.labelSide === "top" ? 1 : -1;
+    const baseY = model.axisY + direction * 58;
+    const textOffset = direction > 0 ? 17 : -10;
+    const dateMarkup = dateEntries
+      .map(function (entry, index) {
+        const y = baseY + direction * Math.min(index, 2) * 20;
+        const fromTimestamp = timestampForDateValue(entry.fromDueAt);
+        const dueTimestamp = timestampForDateValue(entry.dueAt);
+        const hasFrom = timestampInModel(fromTimestamp, model);
+        const hasDue = timestampInModel(dueTimestamp, model);
+        const fromX = hasFrom
+          ? timestampToTimelineAxisCoordinate(fromTimestamp, model)
+          : null;
+        const dueX = hasDue
+          ? timestampToTimelineAxisCoordinate(dueTimestamp, model)
+          : null;
+
+        if (!hasFrom && !hasDue) {
+          return "";
+        }
+
+        return `
+          <g>
+            ${
+              hasFrom && hasDue
+                ? `<line stroke="#d97706" stroke-dasharray="4 5"
+                    stroke-linecap="round" stroke-width="2"
+                    x1="${fromX}" x2="${dueX}" y1="${y}" y2="${y}" />`
+                : ""
+            }
+            ${
+              hasFrom
+                ? `<circle cx="${fromX}" cy="${y}" fill="#ffffff" r="5"
+                    stroke="#d97706" stroke-width="2">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Previous due date", entry.fromDueAt),
+                    )}</title>
+                  </circle>`
+                : ""
+            }
+            ${
+              hasDue
+                ? `<g transform="translate(${dueX} ${y})">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Moved due date", entry.dueAt),
+                    )}</title>
+                    <path d="M 0 -7 L 7 0 L 0 7 L -7 0 Z"
+                      fill="#f59e0b" stroke="#92400e" stroke-width="1.5" />
+                    <text class="timeline-history-label" x="0"
+                      y="${textOffset}" text-anchor="middle">moved</text>
+                  </g>`
+                : ""
+            }
+          </g>
+        `;
+      })
+      .join("");
+    const completedMarkup = completedEntries
+      .map(function (entry, index) {
+        const timestamp = timestampForHistoryTime(entry.at);
+        const clampedTimestamp = clampedTimestampForModel(timestamp, model);
+
+        if (clampedTimestamp === null) {
+          return "";
+        }
+
+        const x = timestampToTimelineAxisCoordinate(clampedTimestamp, model);
+        const y =
+          baseY +
+          direction * (dateEntries.length > 0 ? 70 : 0) +
+          direction * index * 20;
+
+        return `
+          <g transform="translate(${x} ${y})">
+            <title>${escapeHtml(
+              `Completed: ${formatHistoryTime(entry.at)}`,
+            )}</title>
+            <circle fill="#16a34a" r="8" stroke="#ffffff" stroke-width="2" />
+            <path d="M -4 0 L -1 3.5 L 5 -4" fill="none"
+              stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="2" />
+            <text class="timeline-history-label" x="0" y="${textOffset}"
+              text-anchor="middle">done</text>
+          </g>
+        `;
+      })
+      .join("");
+
+    return `
+      <g class="timeline-history-overlay" pointer-events="none">
+        <line stroke="#94a3b8" stroke-dasharray="3 5" stroke-width="1.5"
+          x1="${point.x}" x2="${point.x}" y1="${model.axisY}"
+          y2="${baseY}" />
+        ${dateMarkup}
+        ${completedMarkup}
+      </g>
+    `;
+  }
+
+  function renderVerticalHistoryOverlay(point, model) {
+    const dateEntries = milestoneDateHistoryEntries(point);
+    const completedEntry = latestCompletedHistoryEntry(point);
+    const completedEntries = completedEntry ? [completedEntry] : [];
+
+    if (dateEntries.length === 0 && completedEntries.length === 0) {
+      return "";
+    }
+
+    const direction = point.labelSide === "left" ? 1 : -1;
+    const baseX = model.axisX + direction * 82;
+    const textAnchor = direction > 0 ? "start" : "end";
+    const textX = direction * 12;
+    const dateMarkup = dateEntries
+      .map(function (entry, index) {
+        const x = baseX + direction * Math.min(index, 2) * 22;
+        const fromTimestamp = timestampForDateValue(entry.fromDueAt);
+        const dueTimestamp = timestampForDateValue(entry.dueAt);
+        const hasFrom = timestampInModel(fromTimestamp, model);
+        const hasDue = timestampInModel(dueTimestamp, model);
+        const fromY = hasFrom
+          ? timestampToTimelineAxisCoordinate(fromTimestamp, model)
+          : null;
+        const dueY = hasDue
+          ? timestampToTimelineAxisCoordinate(dueTimestamp, model)
+          : null;
+
+        if (!hasFrom && !hasDue) {
+          return "";
+        }
+
+        return `
+          <g>
+            ${
+              hasFrom && hasDue
+                ? `<line stroke="#d97706" stroke-dasharray="4 5"
+                    stroke-linecap="round" stroke-width="2"
+                    x1="${x}" x2="${x}" y1="${fromY}" y2="${dueY}" />`
+                : ""
+            }
+            ${
+              hasFrom
+                ? `<circle cx="${x}" cy="${fromY}" fill="#ffffff" r="5"
+                    stroke="#d97706" stroke-width="2">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Previous due date", entry.fromDueAt),
+                    )}</title>
+                  </circle>`
+                : ""
+            }
+            ${
+              hasDue
+                ? `<g transform="translate(${x} ${dueY})">
+                    <title>${escapeHtml(
+                      historyMarkerTitle("Moved due date", entry.dueAt),
+                    )}</title>
+                    <path d="M 0 -7 L 7 0 L 0 7 L -7 0 Z"
+                      fill="#f59e0b" stroke="#92400e" stroke-width="1.5" />
+                    <text class="timeline-history-label" x="${textX}" y="4"
+                      text-anchor="${textAnchor}">moved</text>
+                  </g>`
+                : ""
+            }
+          </g>
+        `;
+      })
+      .join("");
+    const completedMarkup = completedEntries
+      .map(function (entry, index) {
+        const timestamp = timestampForHistoryTime(entry.at);
+        const clampedTimestamp = clampedTimestampForModel(timestamp, model);
+
+        if (clampedTimestamp === null) {
+          return "";
+        }
+
+        const x = baseX + direction * (dateEntries.length > 0 ? 80 : 0);
+        const y =
+          timestampToTimelineAxisCoordinate(clampedTimestamp, model) +
+          index * 20;
+
+        return `
+          <g transform="translate(${x} ${y})">
+            <title>${escapeHtml(
+              `Completed: ${formatHistoryTime(entry.at)}`,
+            )}</title>
+            <circle fill="#16a34a" r="8" stroke="#ffffff" stroke-width="2" />
+            <path d="M -4 0 L -1 3.5 L 5 -4" fill="none"
+              stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round"
+              stroke-width="2" />
+            <text class="timeline-history-label" x="${textX}" y="4"
+              text-anchor="${textAnchor}">done</text>
+          </g>
+        `;
+      })
+      .join("");
+
+    return `
+      <g class="timeline-history-overlay" pointer-events="none">
+        <line stroke="#94a3b8" stroke-dasharray="3 5" stroke-width="1.5"
+          x1="${model.axisX}" x2="${baseX}" y1="${point.y}" y2="${point.y}" />
+        ${dateMarkup}
+        ${completedMarkup}
+      </g>
+    `;
+  }
+
+  function renderTimelineHistoryOverlay(point, model) {
+    return model.orientation === "vertical"
+      ? renderVerticalHistoryOverlay(point, model)
+      : renderHorizontalHistoryOverlay(point, model);
+  }
+
   function renderChart(model, showMarker, options) {
     const renderOptions = options || {};
     const isExport = Boolean(renderOptions.exportMode);
@@ -2275,6 +2912,9 @@
     const pointMarkup = pointLayouts
       .map(function (layout, index) {
         const point = layout.point;
+        const historyMarkup = isExport
+          ? ""
+          : renderTimelineHistoryOverlay(point, model);
         const actionMarkup = isExport
           ? ""
           : `
@@ -2305,6 +2945,7 @@
 
         return `
           <g class="timeline-point">
+            ${historyMarkup}
             <g opacity="${layout.labelOpacity}">
               <circle class="timeline-date-handle" cx="${point.x}" cy="${model.axisY}"
                 data-action="drag-date" data-id="${escapeHtml(point.id)}"
@@ -2540,6 +3181,9 @@
     const pointMarkup = pointLayouts
       .map(function (layout) {
         const point = layout.point;
+        const historyMarkup = isExport
+          ? ""
+          : renderTimelineHistoryOverlay(point, model);
         const actionMarkup = isExport
           ? ""
           : `
@@ -2570,6 +3214,7 @@
 
         return `
           <g class="timeline-point">
+            ${historyMarkup}
             <g opacity="${layout.labelOpacity}">
               <g aria-label="Change status or drag to reschedule ${layout.title}"
                 class="timeline-marker-action" data-action="drag-date"
@@ -2658,6 +3303,50 @@
 
   function milestoneRisks(milestone) {
     return Array.isArray(milestone.risks) ? milestone.risks : [];
+  }
+
+  function milestoneStatusHistory(milestone) {
+    return Array.isArray(milestone.history) ? milestone.history : [];
+  }
+
+  function milestoneDateHistoryEntries(milestone) {
+    return milestoneStatusHistory(milestone).filter(function (entry) {
+      return entry && entry.action === "date";
+    });
+  }
+
+  function milestoneStatusHistoryEntries(milestone) {
+    return milestoneStatusHistory(milestone).filter(function (entry) {
+      return entry && entry.action !== "date";
+    });
+  }
+
+  function milestoneStatusLabel(status) {
+    const normalizedStatus = normalizeMilestoneStatus(status);
+    const statusOption = MILESTONE_STATUSES.find(function (candidate) {
+      return candidate.value === normalizedStatus;
+    });
+
+    return statusOption ? statusOption.label : "Planned";
+  }
+
+  function dateValueIncludesTime(value) {
+    const normalizedValue = normalizeDateValue(value);
+
+    return Boolean(normalizedValue && normalizedValue.kind === "date-time");
+  }
+
+  function formatDateValue(value) {
+    const normalizedValue = normalizeDateValue(value);
+
+    if (!normalizedValue) {
+      return "No due date";
+    }
+
+    const includeTimes = dateValueIncludesTime(normalizedValue);
+    const date = parseDateValue(normalizedValue, includeTimes);
+
+    return date ? formatDate(date, includeTimes) : "No due date";
   }
 
   function riskSummary(milestone) {
@@ -3021,6 +3710,106 @@
     `;
   }
 
+  function renderMilestoneStatusHistory(milestone) {
+    const entries = milestoneStatusHistory(milestone);
+
+    return `
+      <div class="milestone-history-panel">
+        <div class="milestone-history-header">
+          <span>Milestone history</span>
+          <strong>${entries.length}</strong>
+        </div>
+        ${
+          entries.length === 0
+            ? '<p class="milestone-history-empty">No changes yet.</p>'
+            : `
+              <ol class="milestone-history-list">
+                ${entries
+                  .slice()
+                  .reverse()
+                  .map(function (entry) {
+                    const deleteButton = `
+                      <button
+                        aria-label="Delete history item"
+                        class="milestone-history-delete-button icon-button"
+                        data-action="delete-milestone-history"
+                        data-history-id="${escapeHtml(entry.id)}"
+                        data-id="${escapeHtml(milestone.id)}"
+                        title="Delete history item"
+                        type="button"
+                      >
+                        &times;
+                      </button>
+                    `;
+
+                    if (entry.action === "date") {
+                      const comment = String(entry.comment || "").trim();
+
+                      return `
+                        <li>
+                          <div class="milestone-history-main">
+                            <span>Due date changed</span>
+                            <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                            ${deleteButton}
+                          </div>
+                          <span class="milestone-history-dates">
+                            ${escapeHtml(formatDateValue(entry.fromDueAt))}
+                            &rarr;
+                            ${escapeHtml(formatDateValue(entry.dueAt))}
+                          </span>
+                          ${
+                            comment
+                              ? `<p class="milestone-history-comment">${escapeHtml(
+                                  comment,
+                                )}</p>`
+                              : ""
+                          }
+                        </li>
+                      `;
+                    }
+
+                    const toStatus = normalizeMilestoneStatus(entry.toStatus);
+                    const dateAction =
+                      toStatus === "completed" ? "Completed" : "Changed";
+                    const comment = String(entry.comment || "").trim();
+
+                    return `
+                      <li>
+                        <div class="milestone-history-main">
+                          <span>
+                            ${escapeHtml(milestoneStatusLabel(entry.fromStatus))}
+                            &rarr;
+                            ${escapeHtml(milestoneStatusLabel(toStatus))}
+                          </span>
+                          <time>${escapeHtml(formatHistoryTime(entry.at))}</time>
+                          ${deleteButton}
+                        </div>
+                        <span class="milestone-history-dates">
+                          Due ${escapeHtml(
+                            formatDateValue(entry.dueAt),
+                          )}
+                          &middot; ${dateAction} ${escapeHtml(
+                            formatHistoryTime(entry.at),
+                          )}
+                        </span>
+                        ${
+                          comment
+                            ? `<p class="milestone-history-comment">${escapeHtml(
+                                comment,
+                              )}</p>`
+                            : ""
+                        }
+                      </li>
+                    `;
+                  })
+                  .join("")}
+              </ol>
+            `
+        }
+      </div>
+    `;
+  }
+
   function renderMilestoneOwnerOptions(milestone) {
     const personOptions = state.people
       .map(function (person) {
@@ -3058,6 +3847,10 @@
     elements.milestoneOwnerSelect.innerHTML =
       renderMilestoneOwnerOptions(milestone);
     elements.milestoneDetailsInput.value = milestone.details || "";
+    elements.milestoneDialogStatusSelect.innerHTML =
+      renderMilestoneStatusOptions(milestone.status);
+    elements.milestoneStatusHistory.innerHTML =
+      renderMilestoneStatusHistory(milestone);
     elements.milestoneDialogRisks.innerHTML = renderRiskControls(
       milestone,
       "dialog",
@@ -3394,8 +4187,17 @@
   }
 
   function updateMilestone(id, field, value, redrawRows) {
-    const nextValue =
-      field === "status" ? normalizeMilestoneStatus(value) : value;
+    if (field === "status") {
+      setMilestoneStatus(id, value, "", redrawRows);
+      return;
+    }
+
+    if (field === "at") {
+      setMilestoneDate(id, value, redrawRows, { recordHistory: true });
+      return;
+    }
+
+    const nextValue = value;
 
     state.milestones = state.milestones.map(function (milestone) {
       if (milestone.id !== id) {
@@ -3413,6 +4215,178 @@
     } else if (field !== "details") {
       renderTimelineAndCounts();
     }
+  }
+
+  function setMilestoneDate(id, value, redrawRows, options) {
+    const settings = options || {};
+    const nextValue = normalizeDateValue(value);
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== id) {
+        return milestone;
+      }
+
+      const previousValue = cloneDateValue(milestone.at);
+
+      if (
+        sameDateValueForMode(previousValue, nextValue, state.includeTimes)
+      ) {
+        return milestone;
+      }
+
+      changed = true;
+      const nextMilestone = Object.assign({}, milestone, {
+        at: nextValue,
+      });
+
+      if (settings.recordHistory === false) {
+        return nextMilestone;
+      }
+
+      return Object.assign({}, nextMilestone, {
+        history: milestoneStatusHistory(milestone).concat([
+          createMilestoneDateHistoryEntry(
+            milestone,
+            previousValue,
+            nextValue,
+            settings.comment || "",
+          ),
+        ]),
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+
+    if (redrawRows) {
+      render();
+    } else {
+      renderTimelineAndCounts();
+      renderMilestoneDialog();
+    }
+
+    return true;
+  }
+
+  function appendMilestoneDateHistory(id, fromDueAt, dueAt, comment) {
+    if (sameDateValueForMode(fromDueAt, dueAt, state.includeTimes)) {
+      return false;
+    }
+
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== id) {
+        return milestone;
+      }
+
+      changed = true;
+      return Object.assign({}, milestone, {
+        history: milestoneStatusHistory(milestone).concat([
+          createMilestoneDateHistoryEntry(
+            milestone,
+            fromDueAt,
+            dueAt,
+            comment,
+          ),
+        ]),
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+    render();
+    return true;
+  }
+
+  function setMilestoneStatus(id, status, comment, redrawRows) {
+    const nextStatus = normalizeMilestoneStatus(status);
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== id) {
+        return milestone;
+      }
+
+      const previousStatus = normalizeMilestoneStatus(milestone.status);
+
+      if (previousStatus === nextStatus) {
+        return milestone;
+      }
+
+      changed = true;
+      return Object.assign({}, milestone, {
+        history: milestoneStatusHistory(milestone).concat([
+          createMilestoneHistoryEntry(
+            milestone,
+            previousStatus,
+            nextStatus,
+            comment,
+          ),
+        ]),
+        status: nextStatus,
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+
+    if (redrawRows) {
+      render();
+    } else {
+      renderTimelineAndCounts();
+      renderStatusMenuLayer();
+      renderMilestoneDialog();
+    }
+
+    return true;
+  }
+
+  function deleteMilestoneHistoryEntry(milestoneId, historyId) {
+    if (!historyId) {
+      return false;
+    }
+
+    let changed = false;
+
+    state.milestones = state.milestones.map(function (milestone) {
+      if (milestone.id !== milestoneId) {
+        return milestone;
+      }
+
+      const history = milestoneStatusHistory(milestone);
+      const nextHistory = history.filter(function (entry) {
+        return entry.id !== historyId;
+      });
+
+      if (nextHistory.length === history.length) {
+        return milestone;
+      }
+
+      changed = true;
+      return Object.assign({}, milestone, {
+        history: nextHistory,
+      });
+    });
+
+    if (!changed) {
+      return false;
+    }
+
+    saveState();
+    renderTimelineAndCounts();
+    renderMilestoneDialog();
+    return true;
   }
 
   function removeMilestone(milestoneId) {
@@ -3642,6 +4616,7 @@
       title: "New milestone",
       at: toDateValueForMode(nextDate, state.includeTimes),
       details: "",
+      history: [],
       ownerId: "",
       risks: [],
       status: "pending",
@@ -3660,6 +4635,7 @@
       title: "New milestone",
       at: toDateValueForMode(date, state.includeTimes),
       details: "",
+      history: [],
       ownerId: "",
       risks: [],
       status: "pending",
@@ -4597,9 +5573,10 @@
     milestoneId,
     axisCoordinate,
     model,
+    options,
   ) {
     if (!model) {
-      return;
+      return false;
     }
 
     const timestamp = timelineAxisCoordinateToTimestamp(axisCoordinate, model);
@@ -4608,11 +5585,19 @@
       return candidate.id === milestoneId;
     });
 
-    if (!milestone || milestone.at === value) {
-      return;
+    if (
+      !milestone ||
+      sameDateValueForMode(milestone.at, value, state.includeTimes)
+    ) {
+      return false;
     }
 
-    updateMilestone(milestoneId, "at", value, true);
+    return setMilestoneDate(
+      milestoneId,
+      value,
+      true,
+      options || { recordHistory: true },
+    );
   }
 
   function updateMilestoneDateFromDrag(event, drag) {
@@ -4628,6 +5613,7 @@
         pointerAxisCoordinate -
         drag.startPointerAxisCoordinate,
       drag.model,
+      { recordHistory: false },
     );
   }
 
@@ -4823,17 +5809,17 @@
   }
 
   elements.asOfInput.addEventListener("input", function (event) {
-    state.asOf = event.target.value;
+    state.asOf = normalizeDateValue(event.target.value);
     saveAndRender();
   });
 
   elements.rangeStartInput.addEventListener("input", function (event) {
-    state.rangeStart = event.target.value;
+    state.rangeStart = normalizeDateValue(event.target.value);
     saveAndRender();
   });
 
   elements.rangeEndInput.addEventListener("input", function (event) {
-    state.rangeEnd = event.target.value;
+    state.rangeEnd = normalizeDateValue(event.target.value);
     saveAndRender();
   });
 
@@ -5027,6 +6013,7 @@
       milestoneId: target.dataset.id,
       model: currentTimelineModel,
       moved: false,
+      startAt: point ? cloneDateValue(point.at) : "",
       startAxisCoordinate: point
         ? timelinePointAxisCoordinate(point, currentTimelineModel)
         : pointerAxisCoordinate,
@@ -5049,7 +6036,7 @@
     const field = event.target.dataset.field;
     const id = event.target.dataset.id;
 
-    if (field === "title" || field === "at" || field === "details") {
+    if (field === "title" || field === "details") {
       updateMilestone(id, field, event.target.value, false);
     }
   });
@@ -5163,6 +6150,37 @@
 
   elements.milestoneForm.addEventListener("click", function (event) {
     if (handleRiskClick(event)) {
+      return;
+    }
+
+    const historyDeleteButton = closestMatch(
+      event.target,
+      '[data-action="delete-milestone-history"]',
+    );
+
+    if (historyDeleteButton) {
+      deleteMilestoneHistoryEntry(
+        historyDeleteButton.dataset.id,
+        historyDeleteButton.dataset.historyId,
+      );
+      return;
+    }
+
+    if (
+      event.target === elements.milestoneStatusUpdateButton &&
+      milestoneDialogMilestoneId
+    ) {
+      const changed = setMilestoneStatus(
+        milestoneDialogMilestoneId,
+        elements.milestoneDialogStatusSelect.value,
+        elements.milestoneStatusCommentInput.value,
+        true,
+      );
+
+      if (changed) {
+        elements.milestoneStatusCommentInput.value = "";
+      }
+
       return;
     }
 
@@ -5292,6 +6310,23 @@
 
       if (completedDrag.moved) {
         updateMilestoneDateFromDrag(event, completedDrag);
+        const milestone = findMilestone(completedDrag.milestoneId);
+
+        if (
+          milestone &&
+          !sameDateValueForMode(
+            completedDrag.startAt,
+            milestone.at,
+            state.includeTimes,
+          )
+        ) {
+          appendMilestoneDateHistory(
+            completedDrag.milestoneId,
+            completedDrag.startAt,
+            milestone.at,
+            "",
+          );
+        }
         return;
       }
 

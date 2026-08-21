@@ -472,6 +472,12 @@ h1 {
   width: 100%;
 }
 
+.timeline-svg > * {
+  transition:
+    filter 140ms ease,
+    opacity 140ms ease;
+}
+
 .timeline-svg-vertical {
   min-width: 640px;
 }
@@ -520,6 +526,49 @@ h1 {
 .timeline-owner-avatar {
   cursor: default;
   pointer-events: auto;
+}
+
+.timeline-history-overlay {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.timeline-point:hover .timeline-history-overlay,
+.timeline-point:focus-within .timeline-history-overlay {
+  opacity: 1;
+}
+
+.timeline-svg:has(.timeline-point:hover .timeline-history-overlay) > :not(.timeline-point),
+.timeline-svg:has(.timeline-point:focus-within .timeline-history-overlay)
+  > :not(.timeline-point) {
+  filter: grayscale(0.45);
+  opacity: 0.2;
+}
+
+.timeline-svg:has(.timeline-point:hover .timeline-history-overlay)
+  .timeline-point:not(:hover),
+.timeline-svg:has(.timeline-point:focus-within .timeline-history-overlay)
+  .timeline-point:not(:focus-within) {
+  filter: grayscale(0.45);
+  opacity: 0.22;
+}
+
+.timeline-svg:has(.timeline-point:hover .timeline-history-overlay)
+  .timeline-point:hover,
+.timeline-svg:has(.timeline-point:focus-within .timeline-history-overlay)
+  .timeline-point:focus-within {
+  filter: none;
+  opacity: 1;
+}
+
+.timeline-history-label {
+  fill: #475569;
+  font-size: 10px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-linejoin: round;
+  stroke-width: 3px;
 }
 
 .timeline-axis-hit-target {
@@ -1183,6 +1232,116 @@ h1 {
   letter-spacing: 0;
 }
 
+.milestone-dialog-status {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.milestone-status-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.milestone-status-comment-field textarea {
+  height: 42px;
+  min-height: 42px;
+  overflow: hidden;
+  resize: none;
+}
+
+.milestone-status-grid button {
+  min-height: 42px;
+}
+
+.milestone-history-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.milestone-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.milestone-history-header strong {
+  color: var(--ink);
+}
+
+.milestone-history-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.milestone-history-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.milestone-history-list li {
+  display: grid;
+  gap: 5px;
+  border-left: 3px solid #93c5fd;
+  background: #f8fafc;
+  padding: 8px 10px;
+}
+
+.milestone-history-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  align-items: center;
+  gap: 10px;
+}
+
+.milestone-history-main span {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.milestone-history-main time,
+.milestone-history-dates {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.milestone-history-main time {
+  white-space: nowrap;
+}
+
+.milestone-history-delete-button {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  border-color: #fee2e2;
+  color: #b91c1c;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.milestone-history-comment {
+  margin: 0;
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .milestone-dialog-risks {
   display: grid;
   gap: 10px;
@@ -1411,6 +1570,7 @@ h1 {
 
   .risk-controls-header,
   .risk-detail-grid,
+  .milestone-status-grid,
   .risk-row {
     grid-template-columns: 1fr;
   }
